@@ -728,7 +728,7 @@ class _CompactAdminChip extends StatelessWidget {
         borderRadius: BorderRadius.circular(999),
       ),
       child: Text(
-        isSuperAdmin ? '$label • Super Admin' : '$label • Admin',
+        isSuperAdmin ? '$label - Super Admin' : '$label - Admin',
         style: Theme.of(context).textTheme.labelLarge?.copyWith(
           color: isSuperAdmin ? Colors.white : AppTheme.primaryDark,
           fontWeight: FontWeight.w700,
@@ -852,7 +852,6 @@ class _UserRoleCard extends StatelessWidget {
                                     ?.copyWith(fontWeight: FontWeight.w600),
                               ),
                             ),
-                            if (!compact) _RoleChip(role: profile.role),
                           ],
                         ),
                         const SizedBox(height: 4),

@@ -8,6 +8,7 @@ import '../models/student_profile.dart';
 import '../services/auth_service.dart';
 import '../services/cloudinary_service.dart';
 import '../services/feed_service.dart';
+import '../services/media_permission_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/app_confirmation_dialog.dart';
 
@@ -71,6 +72,13 @@ class _GalleryScreenState extends State<GalleryScreen> {
     required StudentProfile profile,
   }) async {
     try {
+      final MediaPermissionResult permission =
+          await MediaPermissionService.ensureAccess(source);
+      if (!permission.granted) {
+        _showMessage(permission.message);
+        return;
+      }
+
       final XFile? file = await _picker.pickImage(
         source: source,
         imageQuality: 82,

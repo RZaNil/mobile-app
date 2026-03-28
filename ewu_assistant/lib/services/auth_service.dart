@@ -151,13 +151,11 @@ class AuthService {
             password: password,
           );
       await credential.user?.sendEmailVerification();
-      await saveProfile(
-        StudentProfile.fromEmail(
-          email: normalizedEmail,
-          name: credential.user?.displayName,
-          photoUrl: credential.user?.photoURL,
-          joinedAt: _cachedProfile?.joinedAt,
-        ),
+      await _syncProfileAfterAuth(
+        email: normalizedEmail,
+        user: credential.user,
+        name: credential.user?.displayName,
+        photoUrl: credential.user?.photoURL,
       );
       return credential.user;
     } on FirebaseAuthException catch (error) {
@@ -178,13 +176,11 @@ class AuthService {
             password: password,
           );
 
-      await saveProfile(
-        StudentProfile.fromEmail(
-          email: normalizedEmail,
-          name: credential.user?.displayName,
-          photoUrl: credential.user?.photoURL,
-          joinedAt: _cachedProfile?.joinedAt,
-        ),
+      await _syncProfileAfterAuth(
+        email: normalizedEmail,
+        user: credential.user,
+        name: credential.user?.displayName,
+        photoUrl: credential.user?.photoURL,
       );
       return credential.user;
     } on FirebaseAuthException catch (error) {
@@ -214,13 +210,11 @@ class AuthService {
       final UserCredential userCredential = await _requireAuth()
           .signInWithCredential(credential);
 
-      await saveProfile(
-        StudentProfile.fromEmail(
-          email: email,
-          name: userCredential.user?.displayName ?? googleUser.displayName,
-          photoUrl: userCredential.user?.photoURL ?? googleUser.photoUrl,
-          joinedAt: _cachedProfile?.joinedAt,
-        ),
+      await _syncProfileAfterAuth(
+        email: email,
+        user: userCredential.user,
+        name: userCredential.user?.displayName ?? googleUser.displayName,
+        photoUrl: userCredential.user?.photoURL ?? googleUser.photoUrl,
       );
       return userCredential.user;
     } on FirebaseAuthException catch (error) {
@@ -258,8 +252,14 @@ class AuthService {
 
     try {
       await user.reload();
-      if (auth.currentUser?.emailVerified == true) {
-        await ensureCurrentUserProfile();
+      final User? refreshedUser = auth.currentUser;
+      if (refreshedUser?.emailVerified == true) {
+        await _syncProfileAfterAuth(
+          email: refreshedUser?.email?.trim().toLowerCase() ?? '',
+          user: refreshedUser,
+          name: refreshedUser?.displayName,
+          photoUrl: refreshedUser?.photoURL,
+        );
         return true;
       }
       return false;
@@ -332,10 +332,25 @@ class AuthService {
         firebaseUser: user,
         fallbackJoinedAt: cachedProfile?.joinedAt,
       );
+      await _cacheProfileBestEffort(generatedProfile);
       await saveProfile(generatedProfile);
       return _cachedProfile ?? generatedProfile;
     } catch (_) {
-      return cachedProfile;
+      if (cachedProfile != null) {
+        return cachedProfile;
+      }
+      final StudentProfile fallbackProfile = _mergeWithCurrentUser(
+        StudentProfile.fromEmail(
+          email: user.email?.trim().toLowerCase() ?? '',
+          name: user.displayName,
+          photoUrl: user.photoURL,
+          joinedAt: cachedProfile?.joinedAt,
+        ),
+        firebaseUser: user,
+        fallbackJoinedAt: cachedProfile?.joinedAt,
+      );
+      await _cacheProfileBestEffort(fallbackProfile);
+      return fallbackProfile;
     }
   }
 
@@ -355,12 +370,16 @@ class AuthService {
       firebaseUser: user,
       fallbackJoinedAt: _cachedProfile?.joinedAt,
     );
-    await saveProfile(profile);
+    try {
+      await saveProfile(profile);
+    } catch (_) {
+      await _cacheProfileBestEffort(profile);
+    }
   }
 
   static Stream<RoleConfigData> watchRoleConfig() {
     final FirebaseFirestore? firestore = _firestoreOrNull;
-    if (firestore == null) {
+    if (firestore == null || currentUser == null) {
       return Stream<RoleConfigData>.value(
         RoleConfigData(
           superAdminEmail: superAdminEmail,
@@ -383,7 +402,7 @@ class AuthService {
 
   static Stream<List<UserDirectoryRecord>> watchUsers() {
     final FirebaseFirestore? firestore = _firestoreOrNull;
-    if (firestore == null) {
+    if (firestore == null || currentUser == null) {
       return Stream<List<UserDirectoryRecord>>.value(
         const <UserDirectoryRecord>[],
       );
@@ -566,16 +585,20 @@ class AuthService {
     );
 
     if (writeFirestore && firestore != null && user != null) {
-      final Map<String, dynamic> data = resolvedProfile.toJson();
-      await firestore
-          .collection(_usersCollection)
-          .doc(user.uid)
-          .set(data, SetOptions(merge: true));
+      try {
+        final Map<String, dynamic> data = resolvedProfile.toJson();
+        await firestore
+            .collection(_usersCollection)
+            .doc(user.uid)
+            .set(data, SetOptions(merge: true));
 
-      await firestore
-          .collection(_legacyProfilesCollection)
-          .doc(user.uid)
-          .set(data, SetOptions(merge: true));
+        await firestore
+            .collection(_legacyProfilesCollection)
+            .doc(user.uid)
+            .set(data, SetOptions(merge: true));
+      } catch (_) {
+        // Keep sign-in and profile loading usable even if Firestore sync fails.
+      }
     }
 
     return resolvedProfile;
@@ -613,6 +636,40 @@ class AuthService {
     _cachedProfile = profile;
     final SharedPreferences prefs = await SharedPreferences.getInstance();
     await prefs.setString(_profileStorageKey, StudentProfile.encode(profile));
+  }
+
+  static Future<void> _syncProfileAfterAuth({
+    required String email,
+    required User? user,
+    String? name,
+    String? photoUrl,
+  }) async {
+    final StudentProfile profile = StudentProfile.fromEmail(
+      email: email,
+      name: name,
+      photoUrl: photoUrl,
+      joinedAt: _cachedProfile?.joinedAt,
+    );
+
+    try {
+      await saveProfile(profile);
+    } catch (_) {
+      await _cacheProfileBestEffort(
+        _mergeWithCurrentUser(
+          profile,
+          firebaseUser: user,
+          fallbackJoinedAt: _cachedProfile?.joinedAt,
+        ),
+      );
+    }
+  }
+
+  static Future<void> _cacheProfileBestEffort(StudentProfile profile) async {
+    try {
+      await _cacheProfile(profile);
+    } catch (_) {
+      _cachedProfile = profile;
+    }
   }
 
   static Future<RoleConfigData> _ensureRoleConfig(

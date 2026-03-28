@@ -15,9 +15,13 @@ class SpeechService {
   bool _ttsInitialized = false;
   bool _isListening = false;
   bool _disposed = false;
+  bool _permissionPermanentlyDenied = false;
+  String? _lastErrorMessage;
   VoidCallback? _onListeningDone;
 
   bool get isListening => _isListening;
+  bool get permissionPermanentlyDenied => _permissionPermanentlyDenied;
+  String? get lastErrorMessage => _lastErrorMessage;
 
   Future<bool> initialize() async {
     return _initializeTts();
@@ -46,13 +50,37 @@ class SpeechService {
 
   Future<bool> _prepareSpeechRecognition() async {
     if (_disposed) {
+      _setVoiceError(
+        'Voice recognition is unavailable because the service is closed.',
+      );
       return false;
     }
 
-    final PermissionStatus status = await Permission.microphone.request();
-    if (!status.isGranted) {
+    final PermissionStatus currentStatus = await Permission.microphone.status;
+    if (currentStatus.isPermanentlyDenied || currentStatus.isRestricted) {
+      _setVoiceError(
+        currentStatus.isPermanentlyDenied
+            ? 'Microphone permission is turned off for EWU Assistant. Enable it from Android app settings to use voice mode.'
+            : 'Microphone access is restricted on this device right now.',
+        permissionPermanentlyDenied: currentStatus.isPermanentlyDenied,
+      );
       return false;
     }
+
+    final PermissionStatus status = currentStatus.isGranted
+        ? currentStatus
+        : await Permission.microphone.request();
+    if (!status.isGranted) {
+      _setVoiceError(
+        status.isPermanentlyDenied
+            ? 'Microphone permission is turned off for EWU Assistant. Enable it from Android app settings to use voice mode.'
+            : 'Microphone permission was denied, so voice mode cannot start yet.',
+        permissionPermanentlyDenied: status.isPermanentlyDenied,
+      );
+      return false;
+    }
+
+    _clearVoiceError();
 
     if (_speechInitialized) {
       return true;
@@ -71,8 +99,16 @@ class SpeechService {
         },
       );
       _speechInitialized = available;
+      if (!available) {
+        _setVoiceError(
+          'Speech recognition is not available on this phone right now.',
+        );
+      }
       return available;
     } catch (_) {
+      _setVoiceError(
+        'Speech recognition could not start right now. Please try again in a moment.',
+      );
       return false;
     }
   }
@@ -104,8 +140,12 @@ class SpeechService {
           onResult(result.recognizedWords, result.finalResult);
         },
       );
+      _clearVoiceError();
       return true;
     } catch (_) {
+      _setVoiceError(
+        'Voice listening could not start. Please check your microphone access and try again.',
+      );
       _finishListening();
       return false;
     }
@@ -195,6 +235,19 @@ class SpeechService {
     });
 
     return text;
+  }
+
+  void _clearVoiceError() {
+    _lastErrorMessage = null;
+    _permissionPermanentlyDenied = false;
+  }
+
+  void _setVoiceError(
+    String message, {
+    bool permissionPermanentlyDenied = false,
+  }) {
+    _lastErrorMessage = message;
+    _permissionPermanentlyDenied = permissionPermanentlyDenied;
   }
 
   void _finishListening([VoidCallback? fallback]) {

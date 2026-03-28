@@ -9,7 +9,9 @@ class NoteItem {
     required this.description,
     required this.uploaderUid,
     required this.uploaderName,
-    required this.fileUrl,
+    required this.imageUrls,
+    required this.pdfUrl,
+    required this.pdfFileName,
     required this.createdAt,
   });
 
@@ -20,8 +22,39 @@ class NoteItem {
   final String description;
   final String uploaderUid;
   final String uploaderName;
-  final String fileUrl;
+  final List<String> imageUrls;
+  final String pdfUrl;
+  final String pdfFileName;
   final DateTime createdAt;
+
+  String get imageUrl => imageUrls.isEmpty ? '' : imageUrls.first;
+  bool get hasImage => imageUrls.isNotEmpty;
+  bool get hasPdf => pdfUrl.trim().isNotEmpty;
+  bool get hasAttachments => hasImage || hasPdf;
+  int get attachmentCount => imageUrls.length + (hasPdf ? 1 : 0);
+
+  String get attachmentLabel {
+    if (!hasAttachments) {
+      return 'No attachment';
+    }
+    if (hasImage && hasPdf) {
+      return imageUrls.length > 1
+          ? '${imageUrls.length} images + PDF'
+          : 'Image + PDF';
+    }
+    if (hasImage) {
+      return imageUrls.length > 1 ? '${imageUrls.length} images' : 'Image';
+    }
+    return 'PDF';
+  }
+
+  String get descriptionPreview {
+    final String trimmed = description.trim();
+    if (trimmed.length <= 110) {
+      return trimmed;
+    }
+    return '${trimmed.substring(0, 107)}...';
+  }
 
   NoteItem copyWith({
     String? id,
@@ -31,7 +64,9 @@ class NoteItem {
     String? description,
     String? uploaderUid,
     String? uploaderName,
-    String? fileUrl,
+    List<String>? imageUrls,
+    String? pdfUrl,
+    String? pdfFileName,
     DateTime? createdAt,
   }) {
     return NoteItem(
@@ -42,13 +77,23 @@ class NoteItem {
       description: description ?? this.description,
       uploaderUid: uploaderUid ?? this.uploaderUid,
       uploaderName: uploaderName ?? this.uploaderName,
-      fileUrl: fileUrl ?? this.fileUrl,
+      imageUrls: imageUrls ?? this.imageUrls,
+      pdfUrl: pdfUrl ?? this.pdfUrl,
+      pdfFileName: pdfFileName ?? this.pdfFileName,
       createdAt: createdAt ?? this.createdAt,
     );
   }
 
   factory NoteItem.fromFirestore(DocumentSnapshot<Map<String, dynamic>> doc) {
     final Map<String, dynamic> data = doc.data() ?? <String, dynamic>{};
+    final String legacyFileUrl = data['fileUrl']?.toString() ?? '';
+    final List<String> imageUrls = _parseImageUrls(data, legacyFileUrl);
+    final String pdfUrl =
+        data['pdfUrl']?.toString() ??
+        (_looksLikePdf(legacyFileUrl) ? legacyFileUrl : '');
+    final String pdfFileName =
+        data['pdfFileName']?.toString() ?? _fileNameFromUrl(pdfUrl);
+
     return NoteItem(
       id: doc.id,
       courseCode: data['courseCode']?.toString() ?? '',
@@ -57,7 +102,9 @@ class NoteItem {
       description: data['description']?.toString() ?? '',
       uploaderUid: data['uploaderUid']?.toString() ?? '',
       uploaderName: data['uploaderName']?.toString() ?? 'EWU Student',
-      fileUrl: data['fileUrl']?.toString() ?? '',
+      imageUrls: imageUrls,
+      pdfUrl: pdfUrl,
+      pdfFileName: pdfFileName,
       createdAt: _parseDate(data['createdAt']),
     );
   }
@@ -70,7 +117,11 @@ class NoteItem {
       'description': description,
       'uploaderUid': uploaderUid,
       'uploaderName': uploaderName,
-      'fileUrl': fileUrl,
+      'imageUrls': imageUrls,
+      'imageUrl': imageUrl,
+      'pdfUrl': pdfUrl,
+      'pdfFileName': pdfFileName,
+      'fileUrl': pdfUrl.isNotEmpty ? pdfUrl : imageUrl,
       'createdAt': Timestamp.fromDate(createdAt),
     };
   }
@@ -86,5 +137,51 @@ class NoteItem {
       return DateTime.tryParse(value) ?? DateTime.now();
     }
     return DateTime.now();
+  }
+
+  static List<String> _parseImageUrls(
+    Map<String, dynamic> data,
+    String legacyFileUrl,
+  ) {
+    final Object? raw = data['imageUrls'];
+    final List<String> urls = <String>[];
+    if (raw is List) {
+      for (final Object? value in raw) {
+        final String url = value?.toString().trim() ?? '';
+        if (url.isNotEmpty) {
+          urls.add(url);
+        }
+      }
+    }
+
+    final String singleImageUrl = data['imageUrl']?.toString().trim() ?? '';
+    if (singleImageUrl.isNotEmpty && !urls.contains(singleImageUrl)) {
+      urls.add(singleImageUrl);
+    }
+
+    if (!_looksLikePdf(legacyFileUrl) &&
+        legacyFileUrl.trim().isNotEmpty &&
+        !urls.contains(legacyFileUrl.trim())) {
+      urls.add(legacyFileUrl.trim());
+    }
+
+    return urls;
+  }
+
+  static bool _looksLikePdf(String value) {
+    final String normalized = value.trim().toLowerCase();
+    return normalized.endsWith('.pdf') || normalized.contains('/raw/upload/');
+  }
+
+  static String _fileNameFromUrl(String url) {
+    if (url.trim().isEmpty) {
+      return '';
+    }
+    final Uri? uri = Uri.tryParse(url);
+    final List<String> segments = uri?.pathSegments ?? <String>[];
+    if (segments.isEmpty) {
+      return '';
+    }
+    return Uri.decodeComponent(segments.last);
   }
 }

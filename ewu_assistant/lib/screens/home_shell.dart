@@ -55,64 +55,69 @@ class _HomeShellState extends State<HomeShell> {
 
   @override
   Widget build(BuildContext context) {
+    final bool keyboardVisible = MediaQuery.viewInsetsOf(context).bottom > 0;
+
     return Scaffold(
+      extendBody: true,
       backgroundColor: AppTheme.pageTint,
       body: SafeArea(
         top: false,
         bottom: false,
-        child: Padding(
-          padding: const EdgeInsets.only(bottom: _navBarHeight + 16),
-          child: RepaintBoundary(
-            child: IndexedStack(index: _currentIndex, children: _screens),
-          ),
+        child: RepaintBoundary(
+          child: IndexedStack(index: _currentIndex, children: _screens),
         ),
       ),
-      bottomNavigationBar: SafeArea(
-        top: false,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 0, 20, 10),
-          child: Container(
-            height: _navBarHeight,
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-            decoration: AppTheme.floatingNavDecoration,
-            child: Row(
-              children: <Widget>[
-                _NavItem(
-                  icon: Icons.chat_bubble_rounded,
-                  label: 'Messages',
-                  selected: _currentIndex == 0,
-                  onTap: () => _selectTab(0),
+      bottomNavigationBar: keyboardVisible
+          ? null
+          : SafeArea(
+              top: false,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 10),
+                child: Container(
+                  height: _navBarHeight,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 6,
+                  ),
+                  decoration: AppTheme.floatingNavDecoration,
+                  child: Row(
+                    children: <Widget>[
+                      _NavItem(
+                        icon: Icons.chat_bubble_rounded,
+                        label: 'Messages',
+                        selected: _currentIndex == 0,
+                        onTap: () => _selectTab(0),
+                      ),
+                      _NavItem(
+                        icon: Icons.groups_rounded,
+                        label: 'Community',
+                        selected: _currentIndex == 1,
+                        onTap: () => _selectTab(1),
+                      ),
+                      _NavItem(
+                        icon: Icons.auto_awesome_rounded,
+                        label: 'Chat',
+                        selected: _currentIndex == 2,
+                        emphasized: true,
+                        onTap: () => _selectTab(2),
+                      ),
+                      _NavItem(
+                        icon: Icons.grid_view_rounded,
+                        label: 'Services',
+                        selected: _currentIndex == 3,
+                        onTap: () => _selectTab(3),
+                      ),
+                      _NavItem(
+                        icon: Icons.person_rounded,
+                        label: 'Profile',
+                        selected: _currentIndex == 4,
+                        onTap: () => _selectTab(4),
+                      ),
+                    ],
+                  ),
                 ),
-                _NavItem(
-                  icon: Icons.groups_rounded,
-                  label: 'Community',
-                  selected: _currentIndex == 1,
-                  onTap: () => _selectTab(1),
-                ),
-                _NavItem(
-                  icon: Icons.mic_rounded,
-                  label: 'Voice',
-                  selected: _currentIndex == 2,
-                  emphasized: true,
-                  onTap: () => _selectTab(2),
-                ),
-                _NavItem(
-                  icon: Icons.grid_view_rounded,
-                  label: 'Services',
-                  selected: _currentIndex == 3,
-                  onTap: () => _selectTab(3),
-                ),
-                _NavItem(
-                  icon: Icons.person_rounded,
-                  label: 'Profile',
-                  selected: _currentIndex == 4,
-                  onTap: () => _selectTab(4),
-                ),
-              ],
+              ),
             ),
-          ),
-        ),
-      ),
     );
   }
 

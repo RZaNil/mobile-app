@@ -1,16 +1,21 @@
+import 'dart:io';
+
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../models/note_item.dart';
 import '../models/student_profile.dart';
 import '../services/auth_service.dart';
+import '../services/cloudinary_service.dart';
+import '../services/media_permission_service.dart';
 import '../services/services_hub_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/app_confirmation_dialog.dart';
+import 'note_detail_screen.dart';
 
 class ServicesNotesTab extends StatefulWidget {
-  const ServicesNotesTab({super.key, required this.searchQuery});
-
-  final String searchQuery;
+  const ServicesNotesTab({super.key});
 
   @override
   State<ServicesNotesTab> createState() => _ServicesNotesTabState();
@@ -18,13 +23,12 @@ class ServicesNotesTab extends StatefulWidget {
 
 class _ServicesNotesTabState extends State<ServicesNotesTab> {
   final ServicesHubService _servicesHubService = ServicesHubService();
+  final TextEditingController _searchController = TextEditingController();
 
-  Future<void> _refresh() async {
-    if (!mounted) {
-      return;
-    }
-    setState(() {});
-    await Future<void>.delayed(const Duration(milliseconds: 300));
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
   }
 
   void _showMessage(String message) {
@@ -36,17 +40,16 @@ class _ServicesNotesTabState extends State<ServicesNotesTab> {
     ).showSnackBar(SnackBar(content: Text(message)));
   }
 
-  Future<void> _showCreateNoteSheet() async {
+  Future<void> _openComposer({NoteItem? note}) async {
     final StudentProfile? profile = await AuthService.getProfile();
     final String? uid = AuthService.currentUser?.uid;
     if (!mounted) {
       return;
     }
     if (profile == null || uid == null) {
-      _showMessage('Please sign in again to upload a note.');
+      _showMessage('Please sign in again to manage notes.');
       return;
     }
-
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -55,7 +58,8 @@ class _ServicesNotesTabState extends State<ServicesNotesTab> {
         borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
       ),
       builder: (BuildContext context) {
-        return _CreateNoteSheet(
+        return _NoteComposerSheet(
+          existingNote: note,
           profile: profile,
           uploaderUid: uid,
           servicesHubService: _servicesHubService,
@@ -65,19 +69,25 @@ class _ServicesNotesTabState extends State<ServicesNotesTab> {
     );
   }
 
+  Future<void> _openNote(NoteItem note) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute<NoteDetailScreen>(
+        builder: (_) => NoteDetailScreen(note: note),
+      ),
+    );
+  }
+
   Future<void> _deleteNote(NoteItem note) async {
     final bool confirmed = await showAppConfirmationDialog(
       context,
-      title: 'Delete Note?',
-      message:
-          'This will remove "${note.title}" from the shared course materials hub.',
-      confirmLabel: 'Delete Note',
+      title: 'Delete note?',
+      message: 'This will remove "${note.title}" from the notes list.',
+      confirmLabel: 'Delete',
       destructive: true,
     );
     if (!confirmed) {
       return;
     }
-
     try {
       await _servicesHubService.deleteNote(note.id);
       _showMessage('Note removed.');
@@ -87,156 +97,250 @@ class _ServicesNotesTabState extends State<ServicesNotesTab> {
   }
 
   List<NoteItem> _filterNotes(List<NoteItem> notes) {
-    final String query = widget.searchQuery.trim().toLowerCase();
+    final String query = _searchController.text.trim().toLowerCase();
     if (query.isEmpty) {
       return notes;
     }
-
     return notes.where((NoteItem note) {
-      return note.courseCode.toLowerCase().contains(query) ||
+      return note.title.toLowerCase().contains(query) ||
+          note.courseCode.toLowerCase().contains(query) ||
           note.courseTag.toLowerCase().contains(query) ||
-          note.title.toLowerCase().contains(query) ||
-          note.description.toLowerCase().contains(query);
+          note.description.toLowerCase().contains(query) ||
+          note.uploaderName.toLowerCase().contains(query) ||
+          note.pdfFileName.toLowerCase().contains(query);
     }).toList();
   }
 
   @override
   Widget build(BuildContext context) {
     if (!_servicesHubService.isAvailable) {
-      return const _ServicesEmptyState(
+      return const _NotesEmptyState(
         icon: Icons.menu_book_rounded,
-        title: 'Notes Need Firebase',
+        title: 'Notes need Firebase',
         description:
-            'Complete your Firebase setup to share course notes and study materials.',
+            'Complete Firebase setup to share course notes and attachments.',
       );
     }
 
     return StreamBuilder<List<NoteItem>>(
       stream: _servicesHubService.getNotes(),
       builder: (BuildContext context, AsyncSnapshot<List<NoteItem>> snapshot) {
+        final List<NoteItem> filteredNotes = _filterNotes(
+          snapshot.data ?? const <NoteItem>[],
+        );
+        final String? currentUid = AuthService.currentUser?.uid;
+        final bool canModerate = AuthService.canModerateContent;
+
         if (snapshot.connectionState == ConnectionState.waiting &&
             !snapshot.hasData) {
           return const Center(child: CircularProgressIndicator());
         }
-
         if (snapshot.hasError) {
-          return const _ServicesEmptyState(
+          return const _NotesEmptyState(
             icon: Icons.error_outline_rounded,
-            title: 'Notes Unavailable',
-            description:
-                'We could not load the notes hub right now. Please try again in a moment.',
+            title: 'Notes unavailable',
+            description: 'We could not load notes right now. Please try again.',
           );
         }
 
-        final List<NoteItem> notes = snapshot.data ?? const <NoteItem>[];
-        final List<NoteItem> filteredNotes = _filterNotes(notes);
-        final String? currentUid = AuthService.currentUser?.uid;
-        final bool canModerate = AuthService.canModerateContent;
-
         return Column(
           children: <Widget>[
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(16),
-              decoration: AppTheme.premiumCard,
-              child: Row(
-                children: <Widget>[
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: <Widget>[
-                        Text(
-                          'Course materials',
-                          style: Theme.of(context).textTheme.titleLarge
-                              ?.copyWith(fontWeight: FontWeight.w600),
-                        ),
-                        const SizedBox(height: 6),
-                        Text(
-                          'Share course notes, revision packs, and lab material with your classmates.',
-                          style: Theme.of(context).textTheme.bodyMedium
-                              ?.copyWith(color: AppTheme.textSecondary),
-                        ),
-                      ],
+            Row(
+              children: <Widget>[
+                Expanded(
+                  child: TextField(
+                    controller: _searchController,
+                    onChanged: (_) => setState(() {}),
+                    decoration: InputDecoration(
+                      hintText: 'Search notes by course, title, or attachment',
+                      prefixIcon: const Icon(Icons.search_rounded),
+                      suffixIcon: _searchController.text.trim().isEmpty
+                          ? null
+                          : IconButton(
+                              onPressed: () {
+                                _searchController.clear();
+                                setState(() {});
+                              },
+                              icon: const Icon(Icons.close_rounded),
+                            ),
                     ),
                   ),
-                  const SizedBox(width: 12),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: <Widget>[
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 14,
-                          vertical: 10,
-                        ),
-                        decoration: BoxDecoration(
-                          color: AppTheme.botBubble,
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: Text(
-                          '${filteredNotes.length} notes',
-                          style: Theme.of(context).textTheme.labelLarge
-                              ?.copyWith(
-                                color: AppTheme.primaryDark,
-                                fontWeight: FontWeight.w700,
-                              ),
-                        ),
-                      ),
-                      if (canModerate) ...<Widget>[
-                        const SizedBox(height: 10),
-                        const _AdminModeChip(),
-                      ],
-                    ],
-                  ),
-                ],
-              ),
+                ),
+                const SizedBox(width: 12),
+                FilledButton.icon(
+                  onPressed: () => _openComposer(),
+                  icon: const Icon(Icons.add_rounded),
+                  label: const Text('Add'),
+                ),
+              ],
             ),
-            const SizedBox(height: 16),
-            Align(
-              alignment: Alignment.centerRight,
-              child: FilledButton.icon(
-                onPressed: _showCreateNoteSheet,
-                icon: const Icon(Icons.note_add_outlined),
-                label: const Text('Add Note'),
-              ),
-            ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 14),
             Expanded(
-              child: RefreshIndicator(
-                onRefresh: _refresh,
-                child: filteredNotes.isEmpty
-                    ? ListView(
-                        physics: const AlwaysScrollableScrollPhysics(),
-                        padding: const EdgeInsets.only(top: 40),
-                        children: <Widget>[
-                          _ServicesEmptyState(
-                            icon: Icons.library_books_outlined,
-                            title: widget.searchQuery.trim().isEmpty
-                                ? 'No Notes Yet'
-                                : 'No Notes Match',
-                            description: widget.searchQuery.trim().isEmpty
-                                ? 'Upload the first note to kick off the study materials hub.'
-                                : 'Try another course code or keyword to find matching notes.',
+              child: filteredNotes.isEmpty
+                  ? ListView(
+                      padding: const EdgeInsets.only(top: 40, bottom: 12),
+                      children: <Widget>[
+                        _NotesEmptyState(
+                          icon: Icons.library_books_outlined,
+                          title: _searchController.text.trim().isEmpty
+                              ? 'No notes yet'
+                              : 'No matching notes',
+                          description: _searchController.text.trim().isEmpty
+                              ? 'Add the first note to start your shared study library.'
+                              : 'Try another course code or keyword.',
+                        ),
+                      ],
+                    )
+                  : ListView.separated(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      itemCount: filteredNotes.length,
+                      separatorBuilder: (BuildContext context, int index) =>
+                          const SizedBox(height: 12),
+                      itemBuilder: (BuildContext context, int index) {
+                        final NoteItem note = filteredNotes[index];
+                        final bool canEdit = note.uploaderUid == currentUid;
+                        final bool canDelete = canEdit || canModerate;
+
+                        return Material(
+                          color: Colors.transparent,
+                          child: Ink(
+                            decoration: AppTheme.premiumCard,
+                            child: InkWell(
+                              onTap: () => _openNote(note),
+                              borderRadius: BorderRadius.circular(28),
+                              child: Padding(
+                                padding: const EdgeInsets.all(16),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: <Widget>[
+                                    Row(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: <Widget>[
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: <Widget>[
+                                              Wrap(
+                                                spacing: 8,
+                                                runSpacing: 8,
+                                                children: <Widget>[
+                                                  _InfoChip(
+                                                    label: note.courseCode,
+                                                    icon: Icons
+                                                        .menu_book_outlined,
+                                                  ),
+                                                  if (note.courseTag.isNotEmpty)
+                                                    _InfoChip(
+                                                      label: note.courseTag,
+                                                      icon: Icons.sell_outlined,
+                                                    ),
+                                                  if (note.hasAttachments)
+                                                    _InfoChip(
+                                                      label:
+                                                          note.attachmentLabel,
+                                                      icon: Icons
+                                                          .attach_file_rounded,
+                                                    ),
+                                                ],
+                                              ),
+                                              const SizedBox(height: 10),
+                                              Text(
+                                                note.title,
+                                                style: Theme.of(context)
+                                                    .textTheme
+                                                    .titleMedium
+                                                    ?.copyWith(
+                                                      fontWeight:
+                                                          FontWeight.w700,
+                                                    ),
+                                              ),
+                                              const SizedBox(height: 6),
+                                              Text(
+                                                note.descriptionPreview,
+                                                style: Theme.of(context)
+                                                    .textTheme
+                                                    .bodyMedium
+                                                    ?.copyWith(
+                                                      color: AppTheme
+                                                          .textSecondary,
+                                                    ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                        if (canEdit || canDelete)
+                                          PopupMenuButton<String>(
+                                            onSelected: (String value) {
+                                              if (value == 'edit') {
+                                                _openComposer(note: note);
+                                              } else {
+                                                _deleteNote(note);
+                                              }
+                                            },
+                                            itemBuilder:
+                                                (BuildContext context) {
+                                                  return <
+                                                    PopupMenuEntry<String>
+                                                  >[
+                                                    if (canEdit)
+                                                      const PopupMenuItem<
+                                                        String
+                                                      >(
+                                                        value: 'edit',
+                                                        child: Text(
+                                                          'Edit note',
+                                                        ),
+                                                      ),
+                                                    if (canDelete)
+                                                      const PopupMenuItem<
+                                                        String
+                                                      >(
+                                                        value: 'delete',
+                                                        child: Text(
+                                                          'Delete note',
+                                                        ),
+                                                      ),
+                                                  ];
+                                                },
+                                          ),
+                                      ],
+                                    ),
+                                    if (note.hasImage) ...<Widget>[
+                                      const SizedBox(height: 12),
+                                      _NoteImagePreview(note: note),
+                                    ],
+                                    const SizedBox(height: 12),
+                                    Wrap(
+                                      spacing: 8,
+                                      runSpacing: 8,
+                                      children: <Widget>[
+                                        _InfoChip(
+                                          label: note.uploaderName,
+                                          icon: Icons.person_outline_rounded,
+                                        ),
+                                        _InfoChip(
+                                          label: _formatDate(note.createdAt),
+                                          icon: Icons.schedule_rounded,
+                                        ),
+                                        if (note.hasPdf)
+                                          _InfoChip(
+                                            label: note.pdfFileName.isEmpty
+                                                ? 'PDF attached'
+                                                : note.pdfFileName,
+                                            icon: Icons.picture_as_pdf_outlined,
+                                          ),
+                                      ],
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
                           ),
-                        ],
-                      )
-                    : ListView.separated(
-                        physics: const AlwaysScrollableScrollPhysics(),
-                        padding: const EdgeInsets.only(bottom: 12),
-                        itemCount: filteredNotes.length,
-                        separatorBuilder: (BuildContext context, int index) =>
-                            const SizedBox(height: 14),
-                        itemBuilder: (BuildContext context, int index) {
-                          final NoteItem note = filteredNotes[index];
-                          final bool canDelete =
-                              note.uploaderUid == currentUid || canModerate;
-                          return _NoteCard(
-                            note: note,
-                            canDelete: canDelete,
-                            onDelete: () => _deleteNote(note),
-                          );
-                        },
-                      ),
-              ),
+                        );
+                      },
+                    ),
             ),
           ],
         );
@@ -245,126 +349,54 @@ class _ServicesNotesTabState extends State<ServicesNotesTab> {
   }
 }
 
-class _NoteCard extends StatelessWidget {
-  const _NoteCard({
-    required this.note,
-    required this.canDelete,
-    required this.onDelete,
-  });
-
-  final NoteItem note;
-  final bool canDelete;
-  final VoidCallback onDelete;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: AppTheme.premiumCard,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          Row(
-            children: <Widget>[
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 8,
-                ),
-                decoration: BoxDecoration(
-                  color: AppTheme.botBubble,
-                  borderRadius: BorderRadius.circular(999),
-                ),
-                child: Text(
-                  note.courseTag.isEmpty ? note.courseCode : note.courseTag,
-                  style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                    color: AppTheme.primaryDark,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  note.courseCode,
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
-              if (canDelete)
-                IconButton(
-                  onPressed: onDelete,
-                  icon: const Icon(Icons.delete_outline_rounded),
-                ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Text(
-            note.title,
-            style: Theme.of(
-              context,
-            ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w600),
-          ),
-          const SizedBox(height: 10),
-          Text(
-            note.description,
-            style: Theme.of(
-              context,
-            ).textTheme.bodyLarge?.copyWith(color: AppTheme.textSecondary),
-          ),
-          const SizedBox(height: 14),
-          Wrap(
-            spacing: 12,
-            runSpacing: 12,
-            children: <Widget>[
-              _MetaPill(
-                icon: Icons.person_outline_rounded,
-                label: note.uploaderName,
-              ),
-              _MetaPill(
-                icon: Icons.calendar_today_outlined,
-                label: _formatServicesDate(note.createdAt),
-              ),
-              _MetaPill(
-                icon: Icons.attach_file_rounded,
-                label: note.fileUrl.isEmpty
-                    ? 'Attachment placeholder'
-                    : 'File placeholder ready',
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _CreateNoteSheet extends StatefulWidget {
-  const _CreateNoteSheet({
+class _NoteComposerSheet extends StatefulWidget {
+  const _NoteComposerSheet({
+    required this.existingNote,
     required this.profile,
     required this.uploaderUid,
     required this.servicesHubService,
     required this.onMessage,
   });
 
+  final NoteItem? existingNote;
   final StudentProfile profile;
   final String uploaderUid;
   final ServicesHubService servicesHubService;
   final ValueChanged<String> onMessage;
 
   @override
-  State<_CreateNoteSheet> createState() => _CreateNoteSheetState();
+  State<_NoteComposerSheet> createState() => _NoteComposerSheetState();
 }
 
-class _CreateNoteSheetState extends State<_CreateNoteSheet> {
+class _NoteComposerSheetState extends State<_NoteComposerSheet> {
   final TextEditingController _courseCodeController = TextEditingController();
   final TextEditingController _courseTagController = TextEditingController();
   final TextEditingController _titleController = TextEditingController();
   final TextEditingController _descriptionController = TextEditingController();
-  final TextEditingController _fileUrlController = TextEditingController();
+  final ImagePicker _picker = ImagePicker();
+  final CloudinaryService _cloudinaryService = CloudinaryService();
 
   bool _isSubmitting = false;
+  bool _isUploadingImage = false;
+  bool _isUploadingPdf = false;
+  List<String> _imageUrls = <String>[];
+  String _pdfUrl = '';
+  String _pdfFileName = '';
+
+  @override
+  void initState() {
+    super.initState();
+    final NoteItem? note = widget.existingNote;
+    if (note != null) {
+      _courseCodeController.text = note.courseCode;
+      _courseTagController.text = note.courseTag;
+      _titleController.text = note.title;
+      _descriptionController.text = note.description;
+      _imageUrls = List<String>.from(note.imageUrls);
+      _pdfUrl = note.pdfUrl;
+      _pdfFileName = note.pdfFileName;
+    }
+  }
 
   @override
   void dispose() {
@@ -372,17 +404,175 @@ class _CreateNoteSheetState extends State<_CreateNoteSheet> {
     _courseTagController.dispose();
     _titleController.dispose();
     _descriptionController.dispose();
-    _fileUrlController.dispose();
     super.dispose();
   }
 
-  Future<void> _submit() async {
+  Future<void> _openImageSourcePicker() async {
+    if (_isUploadingImage || _isSubmitting) {
+      return;
+    }
+
+    final ImageSource? source = await showModalBottomSheet<ImageSource>(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+      ),
+      builder: (BuildContext context) => SafeArea(
+        child: Wrap(
+          children: <Widget>[
+            ListTile(
+              leading: const Icon(Icons.photo_library_outlined),
+              title: const Text('Choose from gallery'),
+              onTap: () => Navigator.of(context).pop(ImageSource.gallery),
+            ),
+            ListTile(
+              leading: const Icon(Icons.camera_alt_outlined),
+              title: const Text('Take a photo'),
+              onTap: () => Navigator.of(context).pop(ImageSource.camera),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (source == null) {
+      return;
+    }
+    await _uploadImages(source);
+  }
+
+  Future<void> _uploadImages(ImageSource source) async {
+    if (_isUploadingImage || _isSubmitting) {
+      return;
+    }
+
+    try {
+      final MediaPermissionResult permission =
+          await MediaPermissionService.ensureAccess(source);
+      if (!permission.granted) {
+        widget.onMessage(permission.message);
+        return;
+      }
+
+      setState(() {
+        _isUploadingImage = true;
+      });
+
+      final List<XFile> pickedFiles;
+      if (source == ImageSource.gallery) {
+        pickedFiles = await _picker.pickMultiImage(
+          imageQuality: 82,
+          maxWidth: 1800,
+        );
+      } else {
+        final XFile? captured = await _picker.pickImage(
+          source: source,
+          imageQuality: 82,
+          maxWidth: 1800,
+        );
+        pickedFiles = captured == null ? <XFile>[] : <XFile>[captured];
+      }
+
+      if (pickedFiles.isEmpty) {
+        return;
+      }
+
+      final List<String> uploadedUrls = <String>[];
+      for (final XFile file in pickedFiles) {
+        uploadedUrls.add(await _cloudinaryService.uploadImage(File(file.path)));
+      }
+
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _imageUrls = <String>[..._imageUrls, ...uploadedUrls];
+      });
+      widget.onMessage(
+        uploadedUrls.length == 1
+            ? 'Image attached.'
+            : '${uploadedUrls.length} images attached.',
+      );
+    } catch (error) {
+      widget.onMessage(error.toString().replaceFirst('Exception: ', ''));
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isUploadingImage = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _uploadPdf() async {
+    if (_isUploadingPdf || _isSubmitting) {
+      return;
+    }
+
+    try {
+      setState(() {
+        _isUploadingPdf = true;
+      });
+
+      final FilePickerResult? result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: const <String>['pdf'],
+      );
+      if (result == null || result.files.isEmpty) {
+        return;
+      }
+
+      final PlatformFile platformFile = result.files.single;
+      final String? path = platformFile.path;
+      if (path == null || path.isEmpty) {
+        widget.onMessage('We could not read that PDF file.');
+        return;
+      }
+
+      final String fileName = platformFile.name.trim().isEmpty
+          ? 'note_attachment.pdf'
+          : platformFile.name.trim();
+      final String pdfUrl = await _cloudinaryService.uploadPdf(
+        File(path),
+        fileName: fileName,
+      );
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _pdfUrl = pdfUrl;
+        _pdfFileName = fileName;
+      });
+      widget.onMessage('PDF attached.');
+    } catch (error) {
+      widget.onMessage(error.toString().replaceFirst('Exception: ', ''));
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isUploadingPdf = false;
+        });
+      }
+    }
+  }
+
+  void _removeImageAt(int index) {
+    setState(() {
+      _imageUrls = List<String>.from(_imageUrls)..removeAt(index);
+    });
+  }
+
+  void _removePdf() {
+    setState(() {
+      _pdfUrl = '';
+      _pdfFileName = '';
+    });
+  }
+
+  Future<void> _save() async {
     final String courseCode = _courseCodeController.text.trim().toUpperCase();
-    final String courseTag = _courseTagController.text.trim();
     final String title = _titleController.text.trim();
     final String description = _descriptionController.text.trim();
-    final String fileUrl = _fileUrlController.text.trim();
-
     if (courseCode.isEmpty || title.isEmpty || description.isEmpty) {
       widget.onMessage('Please add course code, title, and description.');
       return;
@@ -391,26 +581,28 @@ class _CreateNoteSheetState extends State<_CreateNoteSheet> {
     setState(() {
       _isSubmitting = true;
     });
-
     try {
-      await widget.servicesHubService.createNote(
-        NoteItem(
-          id: '',
-          courseCode: courseCode,
-          courseTag: courseTag,
-          title: title,
-          description: description,
-          uploaderUid: widget.uploaderUid,
-          uploaderName: widget.profile.name,
-          fileUrl: fileUrl,
-          createdAt: DateTime.now(),
-        ),
+      final NoteItem note = NoteItem(
+        id: widget.existingNote?.id ?? '',
+        courseCode: courseCode,
+        courseTag: _courseTagController.text.trim(),
+        title: title,
+        description: description,
+        uploaderUid: widget.existingNote?.uploaderUid ?? widget.uploaderUid,
+        uploaderName: widget.existingNote?.uploaderName ?? widget.profile.name,
+        imageUrls: _imageUrls,
+        pdfUrl: _pdfUrl,
+        pdfFileName: _pdfFileName,
+        createdAt: widget.existingNote?.createdAt ?? DateTime.now(),
       );
+      await widget.servicesHubService.saveNote(note);
       if (!mounted) {
         return;
       }
       Navigator.of(context).pop();
-      widget.onMessage('Note published.');
+      widget.onMessage(
+        widget.existingNote == null ? 'Note added.' : 'Note updated.',
+      );
     } catch (error) {
       widget.onMessage(error.toString().replaceFirst('Exception: ', ''));
     } finally {
@@ -437,10 +629,10 @@ class _CreateNoteSheetState extends State<_CreateNoteSheet> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
             Text(
-              'Add Note',
+              widget.existingNote == null ? 'Add note' : 'Edit note',
               style: Theme.of(
                 context,
-              ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w600),
+              ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w700),
             ),
             const SizedBox(height: 18),
             TextField(
@@ -450,46 +642,160 @@ class _CreateNoteSheetState extends State<_CreateNoteSheet> {
                 hintText: 'CSE101',
               ),
             ),
-            const SizedBox(height: 14),
+            const SizedBox(height: 12),
             TextField(
               controller: _courseTagController,
               decoration: const InputDecoration(
                 labelText: 'Course tag',
-                hintText: 'Theory, Lab, Midterm Pack',
+                hintText: 'Theory / Lab / Midterm Pack',
               ),
             ),
-            const SizedBox(height: 14),
+            const SizedBox(height: 12),
             TextField(
               controller: _titleController,
-              decoration: const InputDecoration(
-                labelText: 'Title',
-                hintText: 'Revision notes for chapter 1',
-              ),
+              decoration: const InputDecoration(labelText: 'Title'),
             ),
-            const SizedBox(height: 14),
+            const SizedBox(height: 12),
             TextField(
               controller: _descriptionController,
               minLines: 4,
-              maxLines: 7,
-              decoration: const InputDecoration(
-                labelText: 'Description',
-                hintText: 'Tell students what is included in this note.',
-              ),
+              maxLines: 6,
+              decoration: const InputDecoration(labelText: 'Description'),
             ),
-            const SizedBox(height: 14),
-            TextField(
-              controller: _fileUrlController,
-              decoration: const InputDecoration(
-                labelText: 'File URL (optional placeholder)',
-                hintText: 'Paste a placeholder file link for a future pass',
-              ),
+            const SizedBox(height: 16),
+            Text(
+              'Attachments',
+              style: Theme.of(
+                context,
+              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 10),
+            Row(
+              children: <Widget>[
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: _isUploadingImage
+                        ? null
+                        : _openImageSourcePicker,
+                    icon: const Icon(Icons.image_outlined),
+                    label: Text(
+                      _isUploadingImage ? 'Uploading...' : 'Add image',
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: FilledButton.tonalIcon(
+                    onPressed: _isUploadingPdf ? null : _uploadPdf,
+                    icon: const Icon(Icons.picture_as_pdf_outlined),
+                    label: Text(_isUploadingPdf ? 'Uploading...' : 'Add PDF'),
+                  ),
+                ),
+              ],
+            ),
+            if (_imageUrls.isNotEmpty) ...<Widget>[
+              const SizedBox(height: 12),
+              SizedBox(
+                height: 92,
+                child: ListView.separated(
+                  scrollDirection: Axis.horizontal,
+                  itemCount: _imageUrls.length,
+                  separatorBuilder: (BuildContext context, int index) =>
+                      const SizedBox(width: 10),
+                  itemBuilder: (BuildContext context, int index) {
+                    final String imageUrl = _imageUrls[index];
+                    return Stack(
+                      children: <Widget>[
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(18),
+                          child: Image.network(
+                            imageUrl,
+                            width: 92,
+                            height: 92,
+                            fit: BoxFit.cover,
+                            errorBuilder:
+                                (
+                                  BuildContext context,
+                                  Object error,
+                                  StackTrace? stackTrace,
+                                ) => Container(
+                                  width: 92,
+                                  height: 92,
+                                  color: AppTheme.botBubble,
+                                  alignment: Alignment.center,
+                                  child: const Icon(
+                                    Icons.broken_image_outlined,
+                                  ),
+                                ),
+                          ),
+                        ),
+                        Positioned(
+                          top: 6,
+                          right: 6,
+                          child: InkWell(
+                            onTap: () => _removeImageAt(index),
+                            child: Container(
+                              padding: const EdgeInsets.all(4),
+                              decoration: const BoxDecoration(
+                                color: Colors.black54,
+                                shape: BoxShape.circle,
+                              ),
+                              child: const Icon(
+                                Icons.close_rounded,
+                                size: 16,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    );
+                  },
+                ),
+              ),
+            ],
+            if (_pdfUrl.isNotEmpty) ...<Widget>[
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: AppTheme.botBubble,
+                  borderRadius: BorderRadius.circular(18),
+                ),
+                child: Row(
+                  children: <Widget>[
+                    const Icon(
+                      Icons.picture_as_pdf_outlined,
+                      color: AppTheme.primaryDark,
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        _pdfFileName.isEmpty ? 'PDF attached' : _pdfFileName,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: AppTheme.primaryDark,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      onPressed: _removePdf,
+                      icon: const Icon(Icons.close_rounded),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+            const SizedBox(height: 18),
             SizedBox(
               width: double.infinity,
               child: ElevatedButton(
-                onPressed: _isSubmitting ? null : _submit,
-                child: Text(_isSubmitting ? 'Publishing...' : 'Publish Note'),
+                onPressed: _isSubmitting || _isUploadingImage || _isUploadingPdf
+                    ? null
+                    : _save,
+                child: Text(_isSubmitting ? 'Saving...' : 'Save note'),
               ),
             ),
           ],
@@ -499,16 +805,72 @@ class _CreateNoteSheetState extends State<_CreateNoteSheet> {
   }
 }
 
-class _MetaPill extends StatelessWidget {
-  const _MetaPill({required this.icon, required this.label});
+class _NoteImagePreview extends StatelessWidget {
+  const _NoteImagePreview({required this.note});
 
-  final IconData icon;
+  final NoteItem note;
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(20),
+      child: Stack(
+        children: <Widget>[
+          AspectRatio(
+            aspectRatio: 2.2,
+            child: Image.network(
+              note.imageUrl,
+              fit: BoxFit.cover,
+              errorBuilder:
+                  (
+                    BuildContext context,
+                    Object error,
+                    StackTrace? stackTrace,
+                  ) => Container(
+                    color: AppTheme.botBubble,
+                    alignment: Alignment.center,
+                    child: const Icon(Icons.broken_image_outlined),
+                  ),
+            ),
+          ),
+          if (note.imageUrls.length > 1)
+            Positioned(
+              right: 10,
+              bottom: 10,
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 6,
+                ),
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.6),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Text(
+                  '+${note.imageUrls.length - 1} more',
+                  style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _InfoChip extends StatelessWidget {
+  const _InfoChip({required this.label, required this.icon});
+
   final String label;
+  final IconData icon;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
       decoration: BoxDecoration(
         color: AppTheme.botBubble,
         borderRadius: BorderRadius.circular(999),
@@ -516,13 +878,16 @@ class _MetaPill extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: <Widget>[
-          Icon(icon, size: 16, color: AppTheme.primaryDark),
+          Icon(icon, size: 15, color: AppTheme.primaryDark),
           const SizedBox(width: 6),
-          Text(
-            label,
-            style: Theme.of(context).textTheme.labelLarge?.copyWith(
-              color: AppTheme.primaryDark,
-              fontWeight: FontWeight.w700,
+          Flexible(
+            child: Text(
+              label,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                color: AppTheme.primaryDark,
+                fontWeight: FontWeight.w700,
+              ),
             ),
           ),
         ],
@@ -531,30 +896,8 @@ class _MetaPill extends StatelessWidget {
   }
 }
 
-class _AdminModeChip extends StatelessWidget {
-  const _AdminModeChip();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      decoration: BoxDecoration(
-        color: AppTheme.primaryDark,
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Text(
-        'Admin access',
-        style: Theme.of(context).textTheme.labelLarge?.copyWith(
-          color: Colors.white,
-          fontWeight: FontWeight.w700,
-        ),
-      ),
-    );
-  }
-}
-
-class _ServicesEmptyState extends StatelessWidget {
-  const _ServicesEmptyState({
+class _NotesEmptyState extends StatelessWidget {
+  const _NotesEmptyState({
     required this.icon,
     required this.title,
     required this.description,
@@ -569,35 +912,35 @@ class _ServicesEmptyState extends StatelessWidget {
     return Center(
       child: Container(
         width: double.infinity,
-        padding: const EdgeInsets.all(28),
+        padding: const EdgeInsets.all(24),
         decoration: AppTheme.premiumCard,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: <Widget>[
             Container(
-              height: 68,
-              width: 68,
+              height: 64,
+              width: 64,
               decoration: BoxDecoration(
                 color: AppTheme.botBubble,
-                borderRadius: BorderRadius.circular(22),
+                borderRadius: BorderRadius.circular(20),
               ),
-              child: Icon(icon, color: AppTheme.primaryDark, size: 32),
+              child: Icon(icon, color: AppTheme.primaryDark, size: 30),
             ),
-            const SizedBox(height: 18),
+            const SizedBox(height: 14),
             Text(
               title,
               textAlign: TextAlign.center,
               style: Theme.of(
                 context,
-              ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w600),
+              ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
             ),
-            const SizedBox(height: 10),
+            const SizedBox(height: 8),
             Text(
               description,
               textAlign: TextAlign.center,
               style: Theme.of(
                 context,
-              ).textTheme.bodyLarge?.copyWith(color: AppTheme.textSecondary),
+              ).textTheme.bodyMedium?.copyWith(color: AppTheme.textSecondary),
             ),
           ],
         ),
@@ -606,7 +949,7 @@ class _ServicesEmptyState extends StatelessWidget {
   }
 }
 
-String _formatServicesDate(DateTime dateTime) {
+String _formatDate(DateTime dateTime) {
   final DateTime local = dateTime.toLocal();
   return '${local.day}/${local.month}/${local.year}';
 }

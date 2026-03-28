@@ -3,8 +3,11 @@ import 'package:flutter/material.dart';
 import '../models/app_notification.dart';
 import '../services/auth_service.dart';
 import '../services/notification_service.dart';
+import '../services/social_service.dart';
 import '../theme/app_theme.dart';
+import 'admin_panel_screen.dart';
 import 'campus_feed_screen.dart';
+import 'direct_chat_screen.dart';
 import 'messages_screen.dart';
 
 class NotificationsScreen extends StatefulWidget {
@@ -16,6 +19,7 @@ class NotificationsScreen extends StatefulWidget {
 
 class _NotificationsScreenState extends State<NotificationsScreen> {
   final NotificationService _notificationService = NotificationService();
+  final SocialService _socialService = SocialService();
 
   Future<void> _markAllRead(String uid) async {
     await _notificationService.markAllAsRead(uid);
@@ -34,28 +38,65 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     }
 
     switch (item.type) {
-      case 'friend_request':
-      case 'friend_accept':
       case 'message_activity':
+        final String currentUid = AuthService.currentUser?.uid ?? '';
+        final String senderUid = item.senderUid.trim();
+        final String chatId = item.relatedId.trim();
+        final UserDirectoryRecord? sender = senderUid.isEmpty
+            ? null
+            : await _socialService.fetchUserByUid(senderUid);
+        if (!mounted) {
+          return;
+        }
+        if (sender != null && chatId.isNotEmpty && sender.uid != currentUid) {
+          await Navigator.of(context).push(
+            MaterialPageRoute<DirectChatScreen>(
+              builder: (_) => DirectChatScreen(
+                chatId: chatId,
+                otherUser: sender,
+                socialService: _socialService,
+              ),
+            ),
+          );
+          break;
+        }
         await Navigator.of(context).push(
           MaterialPageRoute<MessagesScreen>(
-            builder: (_) => const MessagesScreen(),
+            builder: (_) => const MessagesScreen(initialSection: 0),
           ),
         );
         break;
       case 'notice_published':
         await Navigator.of(context).push(
           MaterialPageRoute<CampusFeedScreen>(
-            builder: (_) => const CampusFeedScreen(initialTab: 2),
+            builder: (_) => const CampusFeedScreen(initialTab: 1),
           ),
         );
         break;
       case 'community_event':
         await Navigator.of(context).push(
           MaterialPageRoute<CampusFeedScreen>(
-            builder: (_) => const CampusFeedScreen(initialTab: 3),
+            builder: (_) => const CampusFeedScreen(initialTab: 0),
           ),
         );
+        break;
+      case 'admin_promotion':
+      case 'admin_update':
+        final profile = await AuthService.getProfile();
+        if (!mounted) {
+          return;
+        }
+        if (profile != null && AuthService.canModerateContent) {
+          await Navigator.of(context).push(
+            MaterialPageRoute<AdminPanelScreen>(
+              builder: (_) => AdminPanelScreen(currentProfile: profile),
+            ),
+          );
+          break;
+        }
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(item.body)));
         break;
       default:
         ScaffoldMessenger.of(context).showSnackBar(
@@ -94,7 +135,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                     icon: Icons.notifications_off_outlined,
                     title: 'Sign In To See Notifications',
                     description:
-                        'Friend requests, message activity, and campus alerts will appear here once you are signed in.',
+                        'Messages, notices, and campus alerts will appear here once you are signed in.',
                   ),
                 ),
               )
@@ -138,7 +179,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                               icon: Icons.notifications_none_rounded,
                               title: 'No Notifications Yet',
                               description:
-                                  'Friend requests, admin updates, and important campus alerts will appear here as soon as activity starts.',
+                                  'New messages, official notices, and campus updates will appear here as soon as activity starts.',
                             ),
                           ),
                         );
@@ -171,7 +212,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                                         CrossAxisAlignment.start,
                                     children: <Widget>[
                                       Text(
-                                        'Campus alerts',
+                                        'In-app activity',
                                         style: Theme.of(context)
                                             .textTheme
                                             .titleLarge
@@ -305,20 +346,6 @@ class _NotificationCard extends StatelessWidget {
 
   static _NotificationVisual _visualForType(String type) {
     switch (type) {
-      case 'friend_request':
-        return const _NotificationVisual(
-          label: 'Friend request',
-          icon: Icons.person_add_alt_1_rounded,
-          backgroundColor: AppTheme.botBubble,
-          foregroundColor: AppTheme.primaryDark,
-        );
-      case 'friend_accept':
-        return const _NotificationVisual(
-          label: 'Friend accepted',
-          icon: Icons.handshake_outlined,
-          backgroundColor: AppTheme.botBubble,
-          foregroundColor: AppTheme.primaryDark,
-        );
       case 'message_activity':
         return const _NotificationVisual(
           label: 'Message',
@@ -327,6 +354,7 @@ class _NotificationCard extends StatelessWidget {
           foregroundColor: AppTheme.primaryDark,
         );
       case 'admin_promotion':
+      case 'admin_update':
         return const _NotificationVisual(
           label: 'Admin update',
           icon: Icons.admin_panel_settings_outlined,

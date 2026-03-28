@@ -4,8 +4,6 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_core/firebase_core.dart';
 
 import '../models/direct_chat.dart';
-import '../models/friend_request.dart';
-import '../models/friendship.dart';
 import '../models/student_profile.dart';
 import 'auth_service.dart';
 import 'notification_service.dart';
@@ -14,26 +12,17 @@ class MessagesDashboardData {
   const MessagesDashboardData({
     required this.currentUid,
     required this.users,
-    required this.incomingRequests,
-    required this.outgoingRequests,
-    required this.friendships,
     required this.chats,
   });
 
   final String currentUid;
   final List<UserDirectoryRecord> users;
-  final List<FriendRequestRecord> incomingRequests;
-  final List<FriendRequestRecord> outgoingRequests;
-  final List<FriendshipRecord> friendships;
   final List<DirectChatThread> chats;
 
   factory MessagesDashboardData.empty({required String currentUid}) {
     return MessagesDashboardData(
       currentUid: currentUid,
       users: const <UserDirectoryRecord>[],
-      incomingRequests: const <FriendRequestRecord>[],
-      outgoingRequests: const <FriendRequestRecord>[],
-      friendships: const <FriendshipRecord>[],
       chats: const <DirectChatThread>[],
     );
   }
@@ -45,91 +34,24 @@ class MessagesDashboardData {
   }
 
   List<UserDirectoryRecord> get directoryUsers {
-    return users.where((UserDirectoryRecord record) {
+    final List<UserDirectoryRecord> visibleUsers = users.where((
+      UserDirectoryRecord record,
+    ) {
       return record.uid != currentUid;
     }).toList();
-  }
-
-  List<FriendRequestRecord> get pendingIncomingRequests {
-    return incomingRequests.where((FriendRequestRecord request) {
-      return request.isPending;
-    }).toList();
-  }
-
-  Set<String> get friendUserIds {
-    return friendships
-        .map(
-          (FriendshipRecord friendship) => friendship.otherUserId(currentUid),
-        )
-        .whereType<String>()
-        .toSet();
-  }
-
-  bool isFriendWith(String otherUid) => friendUserIds.contains(otherUid);
-
-  UserDirectoryRecord? userForId(String uid) => usersByUid[uid];
-
-  FriendRequestRecord? outgoingRequestTo(String otherUid) {
-    FriendRequestRecord? latest;
-    for (final FriendRequestRecord request in outgoingRequests) {
-      if (request.toUid != otherUid) {
-        continue;
-      }
-      if (latest == null || request.createdAt.isAfter(latest.createdAt)) {
-        latest = request;
-      }
-    }
-    return latest;
-  }
-
-  FriendRequestRecord? incomingRequestFrom(String otherUid) {
-    FriendRequestRecord? latest;
-    for (final FriendRequestRecord request in incomingRequests) {
-      if (request.fromUid != otherUid) {
-        continue;
-      }
-      if (latest == null || request.createdAt.isAfter(latest.createdAt)) {
-        latest = request;
-      }
-    }
-    return latest;
-  }
-
-  DirectChatThread? chatWith(String otherUid) {
-    for (final DirectChatThread chat in chats) {
-      if (chat.participants.contains(otherUid)) {
-        return chat;
-      }
-    }
-    return null;
-  }
-
-  List<UserDirectoryRecord> friendUsers() {
-    final List<UserDirectoryRecord> records = <UserDirectoryRecord>[];
-    final Map<String, UserDirectoryRecord> map = usersByUid;
-    for (final FriendshipRecord friendship in friendships) {
-      final String? otherUid = friendship.otherUserId(currentUid);
-      if (otherUid == null) {
-        continue;
-      }
-      final UserDirectoryRecord? record = map[otherUid];
-      if (record != null) {
-        records.add(record);
-      }
-    }
-    records.sort((UserDirectoryRecord a, UserDirectoryRecord b) {
+    visibleUsers.sort((UserDirectoryRecord a, UserDirectoryRecord b) {
       return a.profile.name.toLowerCase().compareTo(
         b.profile.name.toLowerCase(),
       );
     });
-    return records;
+    return visibleUsers;
   }
+
+  UserDirectoryRecord? userForId(String uid) => usersByUid[uid];
 }
 
 class SocialService {
   static const String usersCollection = 'users';
-  static const String friendRequestsCollection = 'friend_requests';
-  static const String friendshipsCollection = 'friendships';
   static const String chatsCollection = 'chats';
   static const String messagesCollection = 'messages';
 
@@ -159,9 +81,6 @@ class SocialService {
         <StreamSubscription<dynamic>>[];
 
     List<UserDirectoryRecord> users = const <UserDirectoryRecord>[];
-    List<FriendRequestRecord> incomingRequests = const <FriendRequestRecord>[];
-    List<FriendRequestRecord> outgoingRequests = const <FriendRequestRecord>[];
-    List<FriendshipRecord> friendships = const <FriendshipRecord>[];
     List<DirectChatThread> chats = const <DirectChatThread>[];
 
     void emit() {
@@ -172,9 +91,6 @@ class SocialService {
         MessagesDashboardData(
           currentUid: normalizedUid,
           users: users,
-          incomingRequests: incomingRequests,
-          outgoingRequests: outgoingRequests,
-          friendships: friendships,
           chats: chats,
         ),
       );
@@ -182,59 +98,20 @@ class SocialService {
 
     controller = StreamController<MessagesDashboardData>(
       onListen: () {
+        unawaited(AuthService.ensureCurrentUserProfile());
         emit();
 
         subscriptions.add(
-          AuthService.watchUsers().listen((List<UserDirectoryRecord> value) {
-            users = value;
-            emit();
-          }, onError: controller.addError),
-        );
-
-        subscriptions.add(
-          _firestore
-              .collection(friendRequestsCollection)
-              .where('toUid', isEqualTo: normalizedUid)
-              .snapshots()
-              .listen((QuerySnapshot<Map<String, dynamic>> snapshot) {
-                incomingRequests =
-                    snapshot.docs
-                        .map(FriendRequestRecord.fromFirestore)
-                        .toList()
-                      ..sort(_sortByDateDescending);
-                emit();
-              }, onError: controller.addError),
-        );
-
-        subscriptions.add(
-          _firestore
-              .collection(friendRequestsCollection)
-              .where('fromUid', isEqualTo: normalizedUid)
-              .snapshots()
-              .listen((QuerySnapshot<Map<String, dynamic>> snapshot) {
-                outgoingRequests =
-                    snapshot.docs
-                        .map(FriendRequestRecord.fromFirestore)
-                        .toList()
-                      ..sort(_sortByDateDescending);
-                emit();
-              }, onError: controller.addError),
-        );
-
-        subscriptions.add(
-          _firestore
-              .collection(friendshipsCollection)
-              .where('users', arrayContains: normalizedUid)
-              .snapshots()
-              .listen((QuerySnapshot<Map<String, dynamic>> snapshot) {
-                friendships =
-                    snapshot.docs.map(FriendshipRecord.fromFirestore).toList()
-                      ..sort(
-                        (FriendshipRecord a, FriendshipRecord b) =>
-                            b.createdAt.compareTo(a.createdAt),
-                      );
-                emit();
-              }, onError: controller.addError),
+          AuthService.watchUsers().listen(
+            (List<UserDirectoryRecord> value) {
+              users = value;
+              emit();
+            },
+            onError: (_) {
+              users = const <UserDirectoryRecord>[];
+              emit();
+            },
+          ),
         );
 
         subscriptions.add(
@@ -242,20 +119,26 @@ class SocialService {
               .collection(chatsCollection)
               .where('participants', arrayContains: normalizedUid)
               .snapshots()
-              .listen((QuerySnapshot<Map<String, dynamic>> snapshot) {
-                chats =
-                    snapshot.docs.map(DirectChatThread.fromFirestore).toList()
-                      ..sort((DirectChatThread a, DirectChatThread b) {
-                        final DateTime first =
-                            a.lastMessageAt ??
-                            DateTime.fromMillisecondsSinceEpoch(0);
-                        final DateTime second =
-                            b.lastMessageAt ??
-                            DateTime.fromMillisecondsSinceEpoch(0);
-                        return second.compareTo(first);
-                      });
-                emit();
-              }, onError: controller.addError),
+              .listen(
+                (QuerySnapshot<Map<String, dynamic>> snapshot) {
+                  chats =
+                      snapshot.docs.map(DirectChatThread.fromFirestore).toList()
+                        ..sort((DirectChatThread a, DirectChatThread b) {
+                          final DateTime first =
+                              a.lastMessageAt ??
+                              DateTime.fromMillisecondsSinceEpoch(0);
+                          final DateTime second =
+                              b.lastMessageAt ??
+                              DateTime.fromMillisecondsSinceEpoch(0);
+                          return second.compareTo(first);
+                        });
+                  emit();
+                },
+                onError: (_) {
+                  chats = const <DirectChatThread>[];
+                  emit();
+                },
+              ),
         );
       },
       onCancel: () async {
@@ -288,157 +171,40 @@ class SocialService {
         });
   }
 
-  Future<void> sendFriendRequest({
-    required String toUid,
-    required StudentProfile toProfile,
-  }) async {
-    final _SignedInContext current = await _requireSignedInContext();
-    final String normalizedToUid = toUid.trim();
-
-    if (normalizedToUid.isEmpty) {
-      throw Exception('That student is unavailable right now.');
-    }
-    if (normalizedToUid == current.uid) {
-      throw Exception('You cannot send a friend request to yourself.');
-    }
-
-    final DocumentReference<Map<String, dynamic>> friendshipRef = _firestore
-        .collection(friendshipsCollection)
-        .doc(_friendshipId(current.uid, normalizedToUid));
-
-    try {
-      if ((await friendshipRef.get()).exists) {
-        throw Exception('You are already connected as friends.');
-      }
-
-      final DocumentReference<Map<String, dynamic>> outgoingRef = _firestore
-          .collection(friendRequestsCollection)
-          .doc(_requestId(current.uid, normalizedToUid));
-      final DocumentReference<Map<String, dynamic>> incomingRef = _firestore
-          .collection(friendRequestsCollection)
-          .doc(_requestId(normalizedToUid, current.uid));
-
-      final DocumentSnapshot<Map<String, dynamic>> outgoingSnapshot =
-          await outgoingRef.get();
-      if (outgoingSnapshot.exists) {
-        final FriendRequestRecord outgoingRequest =
-            FriendRequestRecord.fromFirestore(outgoingSnapshot);
-        if (outgoingRequest.isPending) {
-          throw Exception('You already sent a friend request to this student.');
-        }
-        if (outgoingRequest.isAccepted) {
-          throw Exception('You are already connected as friends.');
-        }
-      }
-
-      final DocumentSnapshot<Map<String, dynamic>> incomingSnapshot =
-          await incomingRef.get();
-      if (incomingSnapshot.exists) {
-        final FriendRequestRecord incomingRequest =
-            FriendRequestRecord.fromFirestore(incomingSnapshot);
-        if (incomingRequest.isPending) {
-          throw Exception(
-            '${toProfile.firstName} already sent you a request. Open Friend Requests to accept it.',
-          );
-        }
-        if (incomingRequest.isAccepted) {
-          throw Exception('You are already connected as friends.');
-        }
-      }
-
-      await outgoingRef.set(<String, dynamic>{
-        'fromUid': current.uid,
-        'fromEmail': current.profile.email,
-        'fromName': current.profile.name,
-        'toUid': normalizedToUid,
-        'toEmail': toProfile.email,
-        'toName': toProfile.name,
-        'status': FriendRequestRecord.pendingStatus,
-        'createdAt': FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
-      await _notificationService.createNotification(
-        toUid: normalizedToUid,
-        type: 'friend_request',
-        title: 'New friend request',
-        body: '${current.profile.firstName} sent you a campus friend request.',
-        relatedId: outgoingRef.id,
-        senderUid: current.uid,
-        senderName: current.profile.name,
-      );
-    } on FirebaseException catch (error) {
-      throw Exception(
-        _mapFirestoreError(
-          error,
-          fallback: 'Unable to send the friend request right now.',
-        ),
-      );
-    }
+  static String chatIdForUsers(String firstUid, String secondUid) {
+    return _chatId(firstUid, secondUid);
   }
 
-  Future<void> acceptFriendRequest(FriendRequestRecord request) async {
-    final _SignedInContext current = await _requireSignedInContext();
-    if (request.toUid != current.uid) {
-      throw Exception('This request is no longer available.');
+  Future<UserDirectoryRecord?> fetchUserByUid(String uid) async {
+    final String normalizedUid = uid.trim();
+    if (!isAvailable || normalizedUid.isEmpty) {
+      return null;
     }
 
     try {
-      final WriteBatch batch = _firestore.batch();
-      final DocumentReference<Map<String, dynamic>> requestRef = _firestore
-          .collection(friendRequestsCollection)
-          .doc(request.id);
-      final DocumentReference<Map<String, dynamic>> friendshipRef = _firestore
-          .collection(friendshipsCollection)
-          .doc(_friendshipId(request.fromUid, request.toUid));
+      final DocumentSnapshot<Map<String, dynamic>> snapshot = await _firestore
+          .collection(usersCollection)
+          .doc(normalizedUid)
+          .get();
+      if (!snapshot.exists) {
+        return null;
+      }
 
-      batch.set(friendshipRef, <String, dynamic>{
-        'users': _sortedUsers(request.fromUid, request.toUid),
-        'createdAt': FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
-      batch.update(requestRef, <String, dynamic>{
-        'status': FriendRequestRecord.acceptedStatus,
-      });
-
-      await batch.commit();
-      await _notificationService.createNotification(
-        toUid: request.fromUid,
-        type: 'friend_accept',
-        title: 'Friend request accepted',
-        body:
-            '${current.profile.firstName} accepted your campus friend request.',
-        relatedId: request.id,
-        senderUid: current.uid,
-        senderName: current.profile.name,
+      StudentProfile profile = StudentProfile.fromJson(
+        snapshot.data() ?? <String, dynamic>{},
       );
-    } on FirebaseException catch (error) {
-      throw Exception(
-        _mapFirestoreError(
-          error,
-          fallback: 'Unable to accept the friend request right now.',
-        ),
-      );
-    }
-  }
-
-  Future<void> rejectFriendRequest(FriendRequestRecord request) async {
-    final _SignedInContext current = await _requireSignedInContext();
-    if (request.toUid != current.uid) {
-      throw Exception('This request is no longer available.');
-    }
-
-    try {
-      await _firestore
-          .collection(friendRequestsCollection)
-          .doc(request.id)
-          .update(<String, dynamic>{
-            'status': FriendRequestRecord.rejectedStatus,
-          });
-    } on FirebaseException catch (error) {
-      throw Exception(
-        _mapFirestoreError(
-          error,
-          fallback: 'Unable to reject the friend request right now.',
-        ),
-      );
+      if (profile.email.isEmpty) {
+        return null;
+      }
+      final String normalizedEmail = profile.email.trim().toLowerCase();
+      if (normalizedEmail == AuthService.superAdminEmail) {
+        profile = profile.copyWith(role: StudentProfile.superAdminRole);
+      } else if (normalizedEmail == AuthService.specialAllowedUserEmail) {
+        profile = profile.copyWith(role: StudentProfile.userRole);
+      }
+      return UserDirectoryRecord(uid: snapshot.id, profile: profile);
+    } on FirebaseException {
+      return null;
     }
   }
 
@@ -459,26 +225,12 @@ class SocialService {
         .doc(chatId);
 
     try {
-      final DocumentSnapshot<Map<String, dynamic>> chatSnapshot = await chatRef
-          .get();
-      if (chatSnapshot.exists) {
-        return chatId;
-      }
-
-      final DocumentSnapshot<Map<String, dynamic>> friendshipSnapshot =
-          await _firestore
-              .collection(friendshipsCollection)
-              .doc(_friendshipId(current.uid, normalizedOtherUid))
-              .get();
-      if (!friendshipSnapshot.exists) {
-        throw Exception(
-          'You can start chatting once the friend request is accepted.',
-        );
-      }
-
       await chatRef.set(<String, dynamic>{
         'participants': _sortedUsers(current.uid, normalizedOtherUid),
         'lastMessage': '',
+        'lastMessageType': DirectChatMessage.textType,
+        'lastMessageImageUrl': '',
+        'lastSeenBy': <String>[current.uid],
         'lastMessageAt': FieldValue.serverTimestamp(),
         'lastSenderUid': '',
       }, SetOptions(merge: true));
@@ -496,12 +248,19 @@ class SocialService {
 
   Future<void> sendMessage({
     required String chatId,
-    required String text,
+    required String otherUid,
+    String text = '',
+    String imageUrl = '',
   }) async {
     final _SignedInContext current = await _requireSignedInContext();
     final String trimmedText = text.trim();
-    if (trimmedText.isEmpty) {
+    final String trimmedImageUrl = imageUrl.trim();
+    final String normalizedOtherUid = otherUid.trim();
+    if (trimmedText.isEmpty && trimmedImageUrl.isEmpty) {
       return;
+    }
+    if (normalizedOtherUid.isEmpty || normalizedOtherUid == current.uid) {
+      throw Exception('That conversation is unavailable right now.');
     }
 
     final DocumentReference<Map<String, dynamic>> chatRef = _firestore
@@ -509,19 +268,10 @@ class SocialService {
         .doc(chatId);
 
     try {
-      final DocumentSnapshot<Map<String, dynamic>> chatSnapshot = await chatRef
-          .get();
-      if (!chatSnapshot.exists) {
-        throw Exception('This chat is not ready yet. Please reopen it.');
-      }
-
-      final List<String> participants = List<String>.from(
-        chatSnapshot.data()?['participants'] as List? ?? const <String>[],
-      );
-      if (!participants.contains(current.uid)) {
-        throw Exception('You do not have access to this chat.');
-      }
-
+      final String messageType = trimmedImageUrl.isNotEmpty
+          ? DirectChatMessage.imageType
+          : DirectChatMessage.textType;
+      final String preview = trimmedText.isNotEmpty ? trimmedText : 'Photo';
       final DocumentReference<Map<String, dynamic>> messageRef = chatRef
           .collection(messagesCollection)
           .doc();
@@ -531,25 +281,29 @@ class SocialService {
         'senderUid': current.uid,
         'senderName': current.profile.name,
         'text': trimmedText,
+        'imageUrl': trimmedImageUrl,
+        'type': messageType,
         'createdAt': FieldValue.serverTimestamp(),
         'seenBy': <String>[current.uid],
+        'reactions': <String, List<String>>{},
+        'isDeleted': false,
       });
       batch.set(chatRef, <String, dynamic>{
-        'participants': participants,
-        'lastMessage': trimmedText,
+        'participants': _sortedUsers(current.uid, normalizedOtherUid),
+        'lastMessage': preview,
+        'lastMessageType': messageType,
+        'lastMessageImageUrl': trimmedImageUrl,
+        'lastSeenBy': <String>[current.uid],
         'lastMessageAt': FieldValue.serverTimestamp(),
         'lastSenderUid': current.uid,
       }, SetOptions(merge: true));
       await batch.commit();
 
-      final List<String> recipientIds = participants
-          .where((String uid) => uid != current.uid)
-          .toList();
       await _notificationService.createForUsers(
-        userIds: recipientIds,
+        userIds: <String>[normalizedOtherUid],
         type: 'message_activity',
         title: 'New message from ${current.profile.firstName}',
-        body: trimmedText,
+        body: trimmedText.isNotEmpty ? trimmedText : 'Sent a photo.',
         relatedId: chatId,
         senderUid: current.uid,
         senderName: current.profile.name,
@@ -564,19 +318,114 @@ class SocialService {
     }
   }
 
+  Future<void> deleteOwnMessage({
+    required String chatId,
+    required DirectChatMessage message,
+  }) async {
+    final _SignedInContext current = await _requireSignedInContext();
+    if (message.senderUid != current.uid) {
+      throw Exception('You can only remove your own messages.');
+    }
+
+    final DocumentReference<Map<String, dynamic>> messageRef = _firestore
+        .collection(chatsCollection)
+        .doc(chatId)
+        .collection(messagesCollection)
+        .doc(message.id);
+
+    try {
+      await messageRef.set(<String, dynamic>{
+        'text': '',
+        'imageUrl': '',
+        'type': DirectChatMessage.deletedType,
+        'isDeleted': true,
+        'reactions': <String, List<String>>{},
+        'seenBy': FieldValue.arrayUnion(<String>[current.uid]),
+      }, SetOptions(merge: true));
+      await _syncChatPreview(chatId);
+    } on FirebaseException catch (error) {
+      throw Exception(
+        _mapFirestoreError(
+          error,
+          fallback: 'Unable to remove that message right now.',
+        ),
+      );
+    }
+  }
+
+  Future<void> toggleMessageReaction({
+    required String chatId,
+    required String messageId,
+    required String reaction,
+  }) async {
+    final _SignedInContext current = await _requireSignedInContext();
+    final String normalizedReaction = reaction.trim().toLowerCase();
+    if (!DirectChatMessage.supportedReactions.contains(normalizedReaction)) {
+      throw Exception('That reaction is unavailable right now.');
+    }
+
+    final DocumentReference<Map<String, dynamic>> messageRef = _firestore
+        .collection(chatsCollection)
+        .doc(chatId)
+        .collection(messagesCollection)
+        .doc(messageId);
+
+    try {
+      await _firestore.runTransaction((Transaction transaction) async {
+        final DocumentSnapshot<Map<String, dynamic>> snapshot =
+            await transaction.get(messageRef);
+        if (!snapshot.exists) {
+          throw Exception('That message is no longer available.');
+        }
+
+        final DirectChatMessage message = DirectChatMessage.fromFirestore(
+          snapshot,
+        );
+        final Map<String, List<String>> reactions = <String, List<String>>{
+          for (final String type in DirectChatMessage.supportedReactions)
+            type: List<String>.from(
+              message.reactions[type] ?? const <String>[],
+            ),
+        };
+
+        final bool alreadySelected =
+            reactions[normalizedReaction]?.contains(current.uid) ?? false;
+        for (final String type in DirectChatMessage.supportedReactions) {
+          reactions[type]!.remove(current.uid);
+        }
+        if (!alreadySelected) {
+          reactions[normalizedReaction]!.add(current.uid);
+        }
+
+        transaction.update(messageRef, <String, dynamic>{
+          'reactions': reactions,
+        });
+      });
+    } on FirebaseException catch (error) {
+      throw Exception(
+        _mapFirestoreError(
+          error,
+          fallback: 'Unable to update the reaction right now.',
+        ),
+      );
+    }
+  }
+
   Future<void> markChatSeen(String chatId) async {
     final String? currentUid = AuthService.currentUser?.uid;
     if (!isAvailable || currentUid == null || currentUid.isEmpty) {
       return;
     }
 
+    final DocumentReference<Map<String, dynamic>> chatRef = _firestore
+        .collection(chatsCollection)
+        .doc(chatId);
+
     try {
-      final QuerySnapshot<Map<String, dynamic>> snapshot = await _firestore
-          .collection(chatsCollection)
-          .doc(chatId)
+      final QuerySnapshot<Map<String, dynamic>> snapshot = await chatRef
           .collection(messagesCollection)
           .orderBy('createdAt', descending: true)
-          .limit(50)
+          .limit(75)
           .get();
 
       final WriteBatch batch = _firestore.batch();
@@ -601,6 +450,49 @@ class SocialService {
       if (updateCount > 0) {
         await batch.commit();
       }
+
+      await chatRef.set(<String, dynamic>{
+        'lastSeenBy': FieldValue.arrayUnion(<String>[currentUid]),
+      }, SetOptions(merge: true));
+    } on FirebaseException {
+      // Best-effort only.
+    }
+  }
+
+  Future<void> _syncChatPreview(String chatId) async {
+    final DocumentReference<Map<String, dynamic>> chatRef = _firestore
+        .collection(chatsCollection)
+        .doc(chatId);
+
+    try {
+      final QuerySnapshot<Map<String, dynamic>> snapshot = await chatRef
+          .collection(messagesCollection)
+          .orderBy('createdAt', descending: true)
+          .limit(1)
+          .get();
+
+      if (snapshot.docs.isEmpty) {
+        await chatRef.set(<String, dynamic>{
+          'lastMessage': '',
+          'lastMessageType': DirectChatMessage.textType,
+          'lastMessageImageUrl': '',
+          'lastSeenBy': const <String>[],
+          'lastSenderUid': '',
+        }, SetOptions(merge: true));
+        return;
+      }
+
+      final DirectChatMessage message = DirectChatMessage.fromFirestore(
+        snapshot.docs.first,
+      );
+      await chatRef.set(<String, dynamic>{
+        'lastMessage': _previewForMessage(message),
+        'lastMessageType': message.type,
+        'lastMessageImageUrl': message.imageUrl,
+        'lastSeenBy': message.seenBy,
+        'lastMessageAt': Timestamp.fromDate(message.createdAt),
+        'lastSenderUid': message.senderUid,
+      }, SetOptions(merge: true));
     } on FirebaseException {
       // Best-effort only.
     }
@@ -612,6 +504,7 @@ class SocialService {
       throw Exception('Please sign in again to continue.');
     }
 
+    await AuthService.ensureCurrentUserProfile();
     final StudentProfile? profile = await AuthService.getProfile();
     if (profile == null || profile.email.isEmpty) {
       throw Exception('We could not load your student profile right now.');
@@ -620,19 +513,17 @@ class SocialService {
     return _SignedInContext(uid: uid, profile: profile);
   }
 
-  static int _sortByDateDescending(
-    FriendRequestRecord first,
-    FriendRequestRecord second,
-  ) {
-    return second.createdAt.compareTo(first.createdAt);
-  }
-
-  static String _requestId(String fromUid, String toUid) {
-    return 'request_${fromUid}_$toUid';
-  }
-
-  static String _friendshipId(String firstUid, String secondUid) {
-    return 'friendship_${_pairKey(firstUid, secondUid)}';
+  static String _previewForMessage(DirectChatMessage message) {
+    if (message.type == DirectChatMessage.deletedType) {
+      return 'Message removed';
+    }
+    if (message.text.trim().isNotEmpty) {
+      return message.text.trim();
+    }
+    if (message.imageUrl.trim().isNotEmpty) {
+      return 'Photo';
+    }
+    return '';
   }
 
   static String _chatId(String firstUid, String secondUid) {
@@ -655,11 +546,11 @@ class SocialService {
   }) {
     switch (error.code) {
       case 'permission-denied':
-        return 'You do not have permission to complete that action.';
+        return 'Messaging is blocked by your Firestore rules. Allow chat and message access for signed-in participants.';
       case 'unavailable':
         return 'The messaging service is temporarily unavailable. Please try again.';
       case 'not-found':
-        return 'That conversation or request is no longer available.';
+        return 'That conversation is no longer available.';
       default:
         return fallback;
     }

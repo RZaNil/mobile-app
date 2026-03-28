@@ -8,6 +8,7 @@ import '../models/student_profile.dart';
 import '../services/auth_service.dart';
 import '../services/cloudinary_service.dart';
 import '../services/community_service.dart';
+import '../services/media_permission_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/app_confirmation_dialog.dart';
 
@@ -71,10 +72,9 @@ class _NoticesTabViewState extends State<NoticesTabView> {
   Future<void> _deleteNotice(NoticeItem notice) async {
     final bool confirmed = await showAppConfirmationDialog(
       context,
-      title: 'Delete Notice?',
-      message:
-          'This will remove "${notice.title}" from the official notices lane.',
-      confirmLabel: 'Delete Notice',
+      title: 'Delete notice?',
+      message: 'This will remove "${notice.title}" from official notices.',
+      confirmLabel: 'Delete',
       destructive: true,
     );
     if (!confirmed) {
@@ -100,7 +100,7 @@ class _NoticesTabViewState extends State<NoticesTabView> {
       builder: (BuildContext context) {
         return SafeArea(
           child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(20, 22, 20, 28),
+            padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
@@ -109,42 +109,36 @@ class _NoticesTabViewState extends State<NoticesTabView> {
                     Container(
                       padding: const EdgeInsets.symmetric(
                         horizontal: 12,
-                        vertical: 8,
+                        vertical: 7,
                       ),
                       decoration: BoxDecoration(
                         color: AppTheme.primaryDark,
                         borderRadius: BorderRadius.circular(999),
                       ),
                       child: Text(
-                        'Official Notice',
+                        'NOTICE',
                         style: Theme.of(context).textTheme.labelLarge?.copyWith(
                           color: Colors.white,
                           fontWeight: FontWeight.w700,
                         ),
                       ),
                     ),
-                    const Spacer(),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        _formatNoticeDate(notice.createdAt),
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: AppTheme.textSecondary,
+                        ),
+                      ),
+                    ),
                     _NoticeRoleBadge(role: notice.authorRole),
                   ],
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  notice.title,
-                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-                const SizedBox(height: 10),
-                Text(
-                  '${notice.authorName} | ${_formatNoticeDate(notice.createdAt)}',
-                  style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                    color: AppTheme.textSecondary,
-                  ),
                 ),
                 if (notice.imageUrl.isNotEmpty) ...<Widget>[
                   const SizedBox(height: 16),
                   ClipRRect(
-                    borderRadius: BorderRadius.circular(24),
+                    borderRadius: BorderRadius.circular(22),
                     child: Image.network(
                       notice.imageUrl,
                       fit: BoxFit.cover,
@@ -164,10 +158,25 @@ class _NoticesTabViewState extends State<NoticesTabView> {
                 ],
                 const SizedBox(height: 18),
                 Text(
+                  notice.title,
+                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                    color: AppTheme.primaryDark,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Text(
                   notice.body,
                   style: Theme.of(
                     context,
                   ).textTheme.bodyLarge?.copyWith(height: 1.55),
+                ),
+                const SizedBox(height: 14),
+                Text(
+                  'Published by ${notice.authorName}',
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: AppTheme.textSecondary,
+                  ),
                 ),
               ],
             ),
@@ -184,7 +193,7 @@ class _NoticesTabViewState extends State<NoticesTabView> {
     if (!_communityService.isAvailable) {
       return const _NoticeEmptyState(
         icon: Icons.notifications_active_outlined,
-        title: 'Notices Need Firebase',
+        title: 'Notices need Firebase',
         description:
             'Complete your Firebase setup to publish and read official campus notices.',
       );
@@ -201,7 +210,7 @@ class _NoticesTabViewState extends State<NoticesTabView> {
         if (snapshot.hasError) {
           return const _NoticeEmptyState(
             icon: Icons.error_outline_rounded,
-            title: 'Notices Unavailable',
+            title: 'Notices unavailable',
             description:
                 'We could not load official notices right now. Please try again in a moment.',
           );
@@ -209,104 +218,50 @@ class _NoticesTabViewState extends State<NoticesTabView> {
 
         final List<NoticeItem> notices = snapshot.data ?? const <NoticeItem>[];
 
-        return Column(
-          children: <Widget>[
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(18),
-              decoration: AppTheme.premiumCard,
-              child: Row(
-                children: <Widget>[
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: <Widget>[
-                        Text(
-                          'Official announcements',
-                          style: Theme.of(context).textTheme.titleLarge
-                              ?.copyWith(fontWeight: FontWeight.w800),
-                        ),
-                        const SizedBox(height: 6),
-                        Text(
-                          canCreate
-                              ? 'Publish important updates for students, departments, and campus events.'
-                              : 'Stay updated with official campus notices, deadlines, and announcements.',
-                          style: Theme.of(context).textTheme.bodyMedium
-                              ?.copyWith(color: AppTheme.textSecondary),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 14,
-                      vertical: 10,
-                    ),
-                    decoration: BoxDecoration(
-                      color: AppTheme.botBubble,
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Text(
-                      '${notices.length} live',
-                      style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                        color: AppTheme.primaryDark,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 16),
-            if (canCreate)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 16),
-                child: Align(
+        return RefreshIndicator(
+          onRefresh: _refresh,
+          child: ListView.separated(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 118),
+            itemCount: notices.isEmpty
+                ? (canCreate ? 2 : 1)
+                : notices.length + (canCreate ? 1 : 0),
+            separatorBuilder: (BuildContext context, int index) =>
+                const SizedBox(height: 12),
+            itemBuilder: (BuildContext context, int index) {
+              if (canCreate && index == 0) {
+                return Align(
                   alignment: Alignment.centerRight,
-                  child: FilledButton.icon(
+                  child: FilledButton.tonalIcon(
                     onPressed: _showCreateNoticeSheet,
-                    icon: const Icon(Icons.campaign_outlined),
-                    label: const Text('New Notice'),
+                    icon: const Icon(Icons.add_alert_outlined),
+                    label: const Text('Publish notice'),
                   ),
-                ),
-              ),
-            Expanded(
-              child: RefreshIndicator(
-                onRefresh: _refresh,
-                child: notices.isEmpty
-                    ? ListView(
-                        physics: const AlwaysScrollableScrollPhysics(),
-                        padding: const EdgeInsets.only(top: 56),
-                        children: <Widget>[
-                          _NoticeEmptyState(
-                            icon: Icons.notifications_none_rounded,
-                            title: 'No Notices Yet',
-                            description: canCreate
-                                ? 'Publish the first official notice to share important student updates.'
-                                : 'Official university announcements will appear here as soon as admins publish them.',
-                          ),
-                        ],
-                      )
-                    : ListView.separated(
-                        physics: const AlwaysScrollableScrollPhysics(),
-                        padding: const EdgeInsets.only(bottom: 12),
-                        itemCount: notices.length,
-                        separatorBuilder: (BuildContext context, int index) =>
-                            const SizedBox(height: 14),
-                        itemBuilder: (BuildContext context, int index) {
-                          final NoticeItem notice = notices[index];
-                          return _NoticeCard(
-                            notice: notice,
-                            canDelete: canCreate,
-                            onTap: () => _showNoticeDetail(notice),
-                            onDelete: () => _deleteNotice(notice),
-                          );
-                        },
-                      ),
-              ),
-            ),
-          ],
+                );
+              }
+
+              final int noticeIndex = canCreate ? index - 1 : index;
+              if (notices.isEmpty) {
+                return const Padding(
+                  padding: EdgeInsets.only(top: 52),
+                  child: _NoticeEmptyState(
+                    icon: Icons.notifications_none_rounded,
+                    title: 'No notices yet',
+                    description:
+                        'Official university notices will appear here as soon as admins publish them.',
+                  ),
+                );
+              }
+
+              final NoticeItem notice = notices[noticeIndex];
+              return _NoticeCard(
+                notice: notice,
+                canDelete: canCreate,
+                onTap: () => _showNoticeDetail(notice),
+                onDelete: () => _deleteNotice(notice),
+              );
+            },
+          ),
         );
       },
     );
@@ -329,97 +284,116 @@ class _NoticeCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return InkWell(
-      borderRadius: BorderRadius.circular(28),
+      borderRadius: BorderRadius.circular(24),
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.all(20),
         decoration: AppTheme.premiumCard,
+        clipBehavior: Clip.antiAlias,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
-            Row(
-              children: <Widget>[
-                Container(
-                  height: 50,
-                  width: 50,
-                  decoration: BoxDecoration(
-                    color: AppTheme.botBubble,
-                    borderRadius: BorderRadius.circular(18),
+            if (notice.imageUrl.isNotEmpty)
+              Image.network(
+                notice.imageUrl,
+                height: 180,
+                width: double.infinity,
+                fit: BoxFit.cover,
+                errorBuilder:
+                    (
+                      BuildContext context,
+                      Object error,
+                      StackTrace? stackTrace,
+                    ) => Container(
+                      height: 180,
+                      color: AppTheme.botBubble,
+                      alignment: Alignment.center,
+                      child: const Icon(Icons.broken_image_outlined),
+                    ),
+              ),
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Row(
+                    children: <Widget>[
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 6,
+                        ),
+                        decoration: BoxDecoration(
+                          color: AppTheme.primaryDark,
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                        child: Text(
+                          'NOTICE',
+                          style: Theme.of(context).textTheme.labelSmall
+                              ?.copyWith(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w700,
+                              ),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          _formatNoticeDate(notice.createdAt),
+                          style: Theme.of(context).textTheme.bodyMedium
+                              ?.copyWith(color: AppTheme.textSecondary),
+                        ),
+                      ),
+                      if (canDelete)
+                        IconButton(
+                          onPressed: onDelete,
+                          icon: const Icon(Icons.more_horiz_rounded),
+                          color: AppTheme.textSecondary,
+                        ),
+                    ],
                   ),
-                  child: const Icon(
-                    Icons.notifications_active_outlined,
-                    color: AppTheme.primaryDark,
-                  ),
-                ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Text(
+                  const SizedBox(height: 12),
+                  Text(
                     notice.title,
                     style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                      fontWeight: FontWeight.w800,
+                      color: AppTheme.primaryDark,
+                      fontWeight: FontWeight.w700,
                     ),
                   ),
-                ),
-                if (canDelete)
-                  IconButton(
-                    onPressed: onDelete,
-                    icon: const Icon(Icons.delete_outline_rounded),
-                  ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Row(
-              children: <Widget>[
-                _NoticeRoleBadge(role: notice.authorRole),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    '${notice.authorName} | ${_formatNoticeDate(notice.createdAt)}',
+                  const SizedBox(height: 8),
+                  Text(
+                    notice.body,
+                    maxLines: 3,
+                    overflow: TextOverflow.ellipsis,
                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: AppTheme.textSecondary,
+                      color: AppTheme.textPrimary,
+                      height: 1.45,
                     ),
                   ),
-                ),
-              ],
-            ),
-            if (notice.imageUrl.isNotEmpty) ...<Widget>[
-              const SizedBox(height: 14),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(22),
-                child: Image.network(
-                  notice.imageUrl,
-                  height: 190,
-                  width: double.infinity,
-                  fit: BoxFit.cover,
-                  errorBuilder:
-                      (
-                        BuildContext context,
-                        Object error,
-                        StackTrace? stackTrace,
-                      ) => Container(
-                        height: 190,
-                        color: AppTheme.botBubble,
-                        alignment: Alignment.center,
-                        child: const Icon(Icons.broken_image_outlined),
+                  const SizedBox(height: 10),
+                  Row(
+                    children: <Widget>[
+                      _NoticeRoleBadge(role: notice.authorRole),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          notice.authorName,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: Theme.of(context).textTheme.bodyMedium
+                              ?.copyWith(color: AppTheme.textSecondary),
+                        ),
                       ),
-                ),
-              ),
-            ],
-            const SizedBox(height: 14),
-            Text(
-              notice.body,
-              maxLines: 4,
-              overflow: TextOverflow.ellipsis,
-              style: Theme.of(
-                context,
-              ).textTheme.bodyLarge?.copyWith(height: 1.5),
-            ),
-            const SizedBox(height: 12),
-            Text(
-              'Tap to read more',
-              style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                color: AppTheme.primaryDark,
-                fontWeight: FontWeight.w700,
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    'Tap to read more',
+                    style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                      color: AppTheme.primaryDark,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
               ),
             ),
           ],
@@ -473,6 +447,13 @@ class _NoticeComposerSheetState extends State<_NoticeComposerSheet> {
     });
 
     try {
+      final MediaPermissionResult permission =
+          await MediaPermissionService.ensureAccess(source);
+      if (!permission.granted) {
+        widget.onMessage(permission.message);
+        return;
+      }
+
       final XFile? file = await _picker.pickImage(
         source: source,
         imageQuality: 82,
@@ -507,7 +488,7 @@ class _NoticeComposerSheetState extends State<_NoticeComposerSheet> {
     final String title = _titleController.text.trim();
     final String body = _bodyController.text.trim();
     if (title.isEmpty || body.isEmpty) {
-      widget.onMessage('Please add both a title and the notice details.');
+      widget.onMessage('Please add both a title and notice details.');
       return;
     }
 
@@ -550,8 +531,8 @@ class _NoticeComposerSheetState extends State<_NoticeComposerSheet> {
       padding: EdgeInsets.only(
         left: 20,
         right: 20,
-        top: 24,
-        bottom: MediaQuery.of(context).viewInsets.bottom + 24,
+        top: 22,
+        bottom: MediaQuery.of(context).viewInsets.bottom + 22,
       ),
       child: SingleChildScrollView(
         child: Column(
@@ -559,37 +540,36 @@ class _NoticeComposerSheetState extends State<_NoticeComposerSheet> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
             Text(
-              'Publish Notice',
+              'Publish notice',
               style: Theme.of(
                 context,
-              ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800),
+              ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w700),
             ),
-            const SizedBox(height: 18),
+            const SizedBox(height: 16),
             TextField(
               controller: _titleController,
               decoration: const InputDecoration(
                 labelText: 'Title',
-                hintText:
-                    'Semester fee update, exam alert, or club fair notice',
+                hintText: 'Exam alert, fee update, club fair notice',
               ),
             ),
-            const SizedBox(height: 14),
+            const SizedBox(height: 12),
             TextField(
               controller: _bodyController,
               minLines: 4,
               maxLines: 8,
               decoration: const InputDecoration(
                 labelText: 'Notice details',
-                hintText: 'Add the full announcement text for students.',
+                hintText: 'Add the full announcement for students.',
               ),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 14),
             Container(
               width: double.infinity,
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
                 color: AppTheme.botBubble,
-                borderRadius: BorderRadius.circular(22),
+                borderRadius: BorderRadius.circular(18),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -601,19 +581,12 @@ class _NoticeComposerSheetState extends State<_NoticeComposerSheet> {
                     ),
                   ),
                   const SizedBox(height: 6),
-                  Text(
-                    'Attach a visual notice, poster, or announcement banner.',
-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: AppTheme.textSecondary,
-                    ),
-                  ),
                   if (_imageUrl.isNotEmpty) ...<Widget>[
-                    const SizedBox(height: 14),
                     ClipRRect(
-                      borderRadius: BorderRadius.circular(20),
+                      borderRadius: BorderRadius.circular(16),
                       child: Image.network(
                         _imageUrl,
-                        height: 170,
+                        height: 160,
                         width: double.infinity,
                         fit: BoxFit.cover,
                       ),
@@ -630,8 +603,7 @@ class _NoticeComposerSheetState extends State<_NoticeComposerSheet> {
                       icon: const Icon(Icons.delete_outline_rounded),
                       label: const Text('Remove image'),
                     ),
-                  ] else ...<Widget>[
-                    const SizedBox(height: 14),
+                  ] else
                     Row(
                       children: <Widget>[
                         Expanded(
@@ -645,7 +617,7 @@ class _NoticeComposerSheetState extends State<_NoticeComposerSheet> {
                         ),
                         const SizedBox(width: 12),
                         Expanded(
-                          child: ElevatedButton.icon(
+                          child: FilledButton.icon(
                             onPressed: _isUploadingImage
                                 ? null
                                 : () => _pickImage(ImageSource.gallery),
@@ -657,16 +629,15 @@ class _NoticeComposerSheetState extends State<_NoticeComposerSheet> {
                         ),
                       ],
                     ),
-                  ],
                 ],
               ),
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 18),
             SizedBox(
               width: double.infinity,
-              child: ElevatedButton(
+              child: FilledButton(
                 onPressed: _isSubmitting || _isUploadingImage ? null : _submit,
-                child: Text(_isSubmitting ? 'Publishing...' : 'Publish Notice'),
+                child: Text(_isSubmitting ? 'Publishing...' : 'Publish notice'),
               ),
             ),
           ],
@@ -686,13 +657,13 @@ class _NoticeRoleBadge extends StatelessWidget {
     final bool isSuperAdmin = role == StudentProfile.superAdminRole;
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
         color: isSuperAdmin ? AppTheme.primaryDark : AppTheme.botBubble,
         borderRadius: BorderRadius.circular(999),
       ),
       child: Text(
-        isSuperAdmin ? 'Super Admin' : 'Admin',
+        isSuperAdmin ? 'Super' : 'Admin',
         style: Theme.of(context).textTheme.labelSmall?.copyWith(
           color: isSuperAdmin ? Colors.white : AppTheme.primaryDark,
           fontWeight: FontWeight.w700,
@@ -716,37 +687,36 @@ class _NoticeEmptyState extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Center(
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(28),
-        decoration: AppTheme.premiumCard,
+      child: Padding(
+        padding: const EdgeInsets.all(24),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: <Widget>[
             Container(
-              height: 68,
-              width: 68,
+              height: 56,
+              width: 56,
               decoration: BoxDecoration(
                 color: AppTheme.botBubble,
-                borderRadius: BorderRadius.circular(22),
+                borderRadius: BorderRadius.circular(18),
               ),
-              child: Icon(icon, color: AppTheme.primaryDark, size: 32),
+              child: Icon(icon, color: AppTheme.primaryDark),
             ),
-            const SizedBox(height: 18),
+            const SizedBox(height: 14),
             Text(
               title,
               textAlign: TextAlign.center,
-              style: Theme.of(
-                context,
-              ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800),
+              style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                color: AppTheme.primaryDark,
+                fontWeight: FontWeight.w700,
+              ),
             ),
-            const SizedBox(height: 10),
+            const SizedBox(height: 8),
             Text(
               description,
               textAlign: TextAlign.center,
               style: Theme.of(
                 context,
-              ).textTheme.bodyLarge?.copyWith(color: AppTheme.textSecondary),
+              ).textTheme.bodyMedium?.copyWith(color: AppTheme.textSecondary),
             ),
           ],
         ),

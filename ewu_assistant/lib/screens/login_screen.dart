@@ -266,6 +266,10 @@ class _LoginScreenState extends State<LoginScreen> {
           TextFormField(
             controller: _emailController,
             keyboardType: TextInputType.emailAddress,
+            autofillHints: const <String>[
+              AutofillHints.username,
+              AutofillHints.email,
+            ],
             onChanged: (_) => setState(() {}),
             decoration: const InputDecoration(
               labelText: 'Student or approved email',
@@ -287,6 +291,7 @@ class _LoginScreenState extends State<LoginScreen> {
           TextFormField(
             controller: _passwordController,
             obscureText: _obscurePassword,
+            autofillHints: const <String>[AutofillHints.password],
             decoration: InputDecoration(
               labelText: 'Password',
               prefixIcon: const Icon(Icons.lock_outline_rounded),
@@ -475,7 +480,6 @@ class _ForgotPasswordDialogState extends State<_ForgotPasswordDialog> {
       if (!mounted) {
         return;
       }
-      Navigator.of(context).pop();
       widget.onMessage(error.toString().replaceFirst('Exception: ', ''));
     } finally {
       if (mounted) {
@@ -493,6 +497,7 @@ class _ForgotPasswordDialogState extends State<_ForgotPasswordDialog> {
       content: TextField(
         controller: _resetController,
         keyboardType: TextInputType.emailAddress,
+        autofillHints: const <String>[AutofillHints.email],
         decoration: const InputDecoration(hintText: 'Email address'),
       ),
       actions: <Widget>[

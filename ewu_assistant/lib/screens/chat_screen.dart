@@ -80,7 +80,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
         return Scaffold(
           appBar: AppBar(
-            title: const Text('Chat Assistant'),
+            title: const Text('EWU Assistant'),
             actions: <Widget>[
               Container(
                 margin: const EdgeInsets.symmetric(vertical: 12),
@@ -248,7 +248,7 @@ class _ChatScreenState extends State<ChatScreen> {
             ),
             const SizedBox(height: 24),
             Text(
-              'Start a conversation',
+              'Chat with EWU Assistant',
               style: Theme.of(
                 context,
               ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800),

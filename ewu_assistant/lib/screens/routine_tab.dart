@@ -152,83 +152,106 @@ class _RoutineTabViewState extends State<RoutineTabView> {
 
         return Column(
           children: <Widget>[
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(18),
-              decoration: AppTheme.premiumCard,
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: <Widget>[
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: <Widget>[
-                        Text(
-                          'Weekly routine',
-                          style: Theme.of(context).textTheme.titleLarge
-                              ?.copyWith(fontWeight: FontWeight.w800),
-                        ),
-                        const SizedBox(height: 6),
-                        Text(
-                          'Track classes by day, keep room reminders handy, and shape your student week.',
-                          style: Theme.of(context).textTheme.bodyMedium
-                              ?.copyWith(color: AppTheme.textSecondary),
-                        ),
-                      ],
+            Row(
+              children: <Widget>[
+                Expanded(
+                  child: Text(
+                    'My Routine',
+                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                      fontWeight: FontWeight.w800,
+                      color: AppTheme.primaryDark,
                     ),
                   ),
-                  const SizedBox(width: 12),
-                  FilledButton.icon(
-                    onPressed: _showRoutineSheet,
-                    icon: const Icon(Icons.add_rounded),
-                    label: const Text('Add Class'),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 16),
-            Wrap(
-              spacing: 10,
-              runSpacing: 10,
-              children: RoutineClassItem.days.map((String day) {
-                final bool selected = day == _selectedDay;
-                final int count = counts[day] ?? 0;
-                return ChoiceChip(
-                  selected: selected,
-                  showCheckmark: false,
-                  label: Text(count > 0 ? '$day ($count)' : day),
-                  onSelected: (bool _) {
-                    setState(() {
-                      _selectedDay = day;
-                    });
-                  },
-                );
-              }).toList(),
-            ),
-            const SizedBox(height: 16),
-            Wrap(
-              spacing: 12,
-              runSpacing: 12,
-              children: <Widget>[
-                OutlinedButton.icon(
-                  onPressed: () {
-                    _showMessage(
-                      'Advanced routine import will be added in the next pass.',
-                    );
-                  },
-                  icon: const Icon(Icons.upload_file_outlined),
-                  label: const Text('Import Routine'),
                 ),
-                OutlinedButton.icon(
-                  onPressed: () {
-                    _showMessage(
-                      'Routine PDF export will be added in the next pass.',
-                    );
-                  },
-                  icon: const Icon(Icons.picture_as_pdf_outlined),
-                  label: const Text('Export PDF'),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 10,
+                  ),
+                  decoration: BoxDecoration(
+                    color: AppTheme.botBubble,
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Text(
+                    '${counts[_selectedDay] ?? 0} classes',
+                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                      color: AppTheme.primaryDark,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                IconButton.filled(
+                  onPressed: _showRoutineSheet,
+                  icon: const Icon(Icons.add_rounded),
+                  style: IconButton.styleFrom(
+                    backgroundColor: AppTheme.primaryDark,
+                    foregroundColor: Colors.white,
+                  ),
                 ),
               ],
+            ),
+            const SizedBox(height: 14),
+            Row(
+              children: <Widget>[
+                Expanded(
+                  child: FilledButton.icon(
+                    onPressed: () {
+                      _showMessage(
+                        'Advanced routine import will be added in the next pass.',
+                      );
+                    },
+                    icon: const Icon(Icons.upload_file_outlined),
+                    label: const Text('Upload to Add'),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: AppTheme.primaryDark,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 15),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: FilledButton.icon(
+                    onPressed: () {
+                      _showMessage(
+                        'Routine PDF export will be added in the next pass.',
+                      );
+                    },
+                    icon: const Icon(Icons.picture_as_pdf_outlined),
+                    label: const Text('Generate PDF'),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: AppTheme.primaryDark,
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(vertical: 15),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            SizedBox(
+              height: 48,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                itemCount: RoutineClassItem.days.length,
+                separatorBuilder: (BuildContext context, int index) =>
+                    const SizedBox(width: 10),
+                itemBuilder: (BuildContext context, int index) {
+                  final String day = RoutineClassItem.days[index];
+                  final bool selected = day == _selectedDay;
+                  return ChoiceChip(
+                    selected: selected,
+                    showCheckmark: false,
+                    label: Text(day),
+                    onSelected: (bool _) {
+                      setState(() {
+                        _selectedDay = day;
+                      });
+                    },
+                  );
+                },
+              ),
             ),
             const SizedBox(height: 16),
             Expanded(
@@ -237,19 +260,19 @@ class _RoutineTabViewState extends State<RoutineTabView> {
                 child: dayClasses.isEmpty
                     ? ListView(
                         physics: const AlwaysScrollableScrollPhysics(),
-                        padding: const EdgeInsets.only(top: 56),
+                        padding: const EdgeInsets.fromLTRB(0, 56, 0, 118),
                         children: <Widget>[
                           _RoutineEmptyState(
-                            icon: Icons.schedule_outlined,
-                            title: 'No Classes On $_selectedDay',
+                            icon: Icons.event_busy_outlined,
+                            title: 'No classes on $_selectedDay',
                             description:
-                                'Add a class to build your routine for $_selectedDay.',
+                                'Tap + to add a class or use Upload to Add when import is ready.',
                           ),
                         ],
                       )
                     : ListView.separated(
                         physics: const AlwaysScrollableScrollPhysics(),
-                        padding: const EdgeInsets.only(bottom: 12),
+                        padding: const EdgeInsets.only(bottom: 118),
                         itemCount: dayClasses.length,
                         separatorBuilder: (BuildContext context, int index) =>
                             const SizedBox(height: 14),
@@ -285,14 +308,14 @@ class _RoutineClassCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(16),
       decoration: AppTheme.premiumCard,
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           Container(
-            width: 14,
-            height: 110,
+            width: 12,
+            height: 96,
             decoration: BoxDecoration(
               color: item.colorValue,
               borderRadius: BorderRadius.circular(999),
@@ -304,13 +327,24 @@ class _RoutineClassCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
                 Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: <Widget>[
                     Expanded(
-                      child: Text(
-                        item.courseCode,
-                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                          fontWeight: FontWeight.w800,
-                        ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: <Widget>[
+                          Text(
+                            item.courseCode,
+                            style: Theme.of(context).textTheme.titleMedium
+                                ?.copyWith(fontWeight: FontWeight.w800),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            item.courseTitle,
+                            style: Theme.of(context).textTheme.titleSmall
+                                ?.copyWith(fontWeight: FontWeight.w700),
+                          ),
+                        ],
                       ),
                     ),
                     IconButton(
@@ -323,15 +357,9 @@ class _RoutineClassCard extends StatelessWidget {
                     ),
                   ],
                 ),
-                Text(
-                  item.courseTitle,
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                const SizedBox(height: 10),
+                const SizedBox(height: 12),
                 Wrap(
-                  spacing: 12,
+                  spacing: 10,
                   runSpacing: 10,
                   children: <Widget>[
                     _RoutineMetaChip(
@@ -696,7 +724,7 @@ class _RoutineEmptyState extends StatelessWidget {
               textAlign: TextAlign.center,
               style: Theme.of(
                 context,
-              ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w800),
+              ).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w700),
             ),
             const SizedBox(height: 10),
             Text(

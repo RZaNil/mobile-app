@@ -27,9 +27,11 @@ class ChatProvider extends ChangeNotifier {
   bool _autoSpeak = true;
   bool _serverOnline = false;
   bool _disposed = false;
+  bool _voicePermissionBlocked = false;
   int _requestVersion = 0;
   String _partialText = '';
   String _lastFinalSpeech = '';
+  String? _voiceErrorMessage;
   StudentProfile? _studentProfile;
 
   List<ChatMessage> get messages => List<ChatMessage>.unmodifiable(_messages);
@@ -38,7 +40,9 @@ class ChatProvider extends ChangeNotifier {
   bool get speaking => _speaking;
   bool get autoSpeak => _autoSpeak;
   bool get serverOnline => _serverOnline;
+  bool get voicePermissionBlocked => _voicePermissionBlocked;
   String get partialText => _partialText;
+  String? get voiceErrorMessage => _voiceErrorMessage;
   StudentProfile? get studentProfile => _studentProfile;
 
   Future<void> initialize() async {
@@ -103,6 +107,8 @@ class ChatProvider extends ChangeNotifier {
     _speaking = false;
     _partialText = '';
     _lastFinalSpeech = '';
+    _voiceErrorMessage = null;
+    _voicePermissionBlocked = false;
     _listening = true;
     _notifySafely();
 
@@ -123,6 +129,7 @@ class ChatProvider extends ChangeNotifier {
           return;
         }
 
+        _voiceErrorMessage = null;
         _lastFinalSpeech = finalText;
         _listening = false;
         _partialText = '';
@@ -139,6 +146,8 @@ class ChatProvider extends ChangeNotifier {
     );
     if (!_disposed && !started) {
       _listening = false;
+      _voiceErrorMessage = _speechService.lastErrorMessage;
+      _voicePermissionBlocked = _speechService.permissionPermanentlyDenied;
       _notifySafely();
     }
     return started;
@@ -226,6 +235,8 @@ class ChatProvider extends ChangeNotifier {
     _messages.clear();
     _partialText = '';
     _lastFinalSpeech = '';
+    _voiceErrorMessage = null;
+    _voicePermissionBlocked = false;
     _loading = false;
     _listening = false;
     _speaking = false;

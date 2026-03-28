@@ -5,8 +5,6 @@ import '../models/student_profile.dart';
 import '../providers/chat_provider.dart';
 import '../services/auth_service.dart';
 import '../theme/app_theme.dart';
-import '../widgets/app_branding.dart';
-import '../widgets/campus_section_header.dart';
 import '../widgets/app_confirmation_dialog.dart';
 import '../widgets/notification_action_button.dart';
 import 'admin_panel_screen.dart';
@@ -19,30 +17,10 @@ class ProfileScreen extends StatelessWidget {
 
   final Future<void> Function() onSignedOut;
 
-  Future<void> _openQuickDestination(
-    BuildContext context, {
-    required String title,
-    required String description,
-    required WidgetBuilder builder,
-  }) async {
-    try {
-      await Navigator.of(
-        context,
-      ).push(MaterialPageRoute<void>(builder: builder));
-    } catch (_) {
-      if (!context.mounted) {
-        return;
-      }
-      await Navigator.of(context).push(
-        MaterialPageRoute<void>(
-          builder: (_) => _ProfileFeatureStarterScreen(
-            title: title,
-            description: description,
-          ),
-        ),
-      );
-    }
-  }
+  static const Color _pageBlue = Color(0xFFF6FBFF);
+  static const Color _pageBlueSoft = Color(0xFFEFF6FF);
+  static const Color _heroBlue = Color(0xFFE8F3FF);
+  static const Color _heroBlueSoft = Color(0xFFDDEBFF);
 
   @override
   Widget build(BuildContext context) {
@@ -52,7 +30,9 @@ class ProfileScreen extends StatelessWidget {
         final String email =
             profile?.email ?? AuthService.currentUser?.email ?? '';
         final String name = profile?.name ?? 'EWU Student';
-        final String studentId = profile?.studentId ?? 'Not available';
+        final String studentId = profile?.studentId.isNotEmpty == true
+            ? profile!.studentId
+            : 'Not available';
         final String department = profile?.department ?? 'Unknown';
         final String batch = profile?.batchYear ?? 'Unknown';
         final DateTime? joinedAt = profile?.joinedAt;
@@ -60,35 +40,99 @@ class ProfileScreen extends StatelessWidget {
         final bool canAccessAdminPanel =
             profile?.canAccessAdminPanel ?? AuthService.canModerateContent;
 
+        final List<_ProfileActionData> campusActions = <_ProfileActionData>[
+          _ProfileActionData(
+            icon: Icons.calendar_month_outlined,
+            title: 'My Routine',
+            subtitle: 'Open your saved weekly classes.',
+            badge: 'Routine',
+            destination: const CampusFeedScreen(initialTab: 2),
+          ),
+          _ProfileActionData(
+            icon: Icons.groups_rounded,
+            title: 'Community Hub',
+            subtitle: 'Browse campus posts, notices, and routine.',
+            badge: 'Campus',
+            destination: const CampusFeedScreen(initialTab: 0),
+          ),
+          _ProfileActionData(
+            icon: Icons.notifications_active_outlined,
+            title: 'Notices',
+            subtitle: 'See official announcements from the app.',
+            badge: 'Official',
+            destination: const CampusFeedScreen(initialTab: 1),
+          ),
+        ];
+
+        final List<_ProfileActionData> toolActions = <_ProfileActionData>[
+          _ProfileActionData(
+            icon: Icons.dashboard_customize_outlined,
+            title: 'Student Smart Tools',
+            subtitle: 'CGPA, routine, faculty finder, and exam countdown.',
+            badge: '4 tools',
+            destination: const SmartToolsScreen(),
+          ),
+        ];
+
+        final List<_ProfileActionData> adminActions = <_ProfileActionData>[
+          if (canAccessAdminPanel)
+            _ProfileActionData(
+              icon: Icons.admin_panel_settings_outlined,
+              title: 'Admin Panel',
+              subtitle: profile?.isSuperAdmin == true
+                  ? 'Manage admins and moderate campus activity.'
+                  : 'Open moderation tools for app content.',
+              badge: profile?.isSuperAdmin == true ? 'Super Admin' : 'Admin',
+              destination: AdminPanelScreen(currentProfile: profile),
+            ),
+        ];
+
         return Scaffold(
-          backgroundColor: AppTheme.pageTint,
+          backgroundColor: _pageBlue,
           body: Container(
             decoration: const BoxDecoration(
-              gradient: AppTheme.backgroundGradient,
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: <Color>[_pageBlue, _pageBlueSoft],
+              ),
             ),
             child: SafeArea(
               child: ListView(
-                padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+                padding: const EdgeInsets.fromLTRB(20, 16, 20, 120),
                 children: <Widget>[
-                  CampusSectionHeader(
-                    title: 'Profile',
-                    subtitle:
-                        'Your student identity, campus shortcuts, and assistant settings in one place.',
-                    actions: <Widget>[
-                      _HeaderRoleChip(label: _roleLabel(role)),
-                      NotificationActionButton(),
-                      IconButton.filledTonal(
-                        onPressed: () {
-                          Navigator.of(context).push(
-                            MaterialPageRoute<SettingsScreen>(
-                              builder: (_) =>
-                                  SettingsScreen(onSignedOut: onSignedOut),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: <Widget>[
+                            Text(
+                              'Profile',
+                              style: Theme.of(context).textTheme.headlineSmall
+                                  ?.copyWith(
+                                    color: AppTheme.primaryDark,
+                                    fontWeight: FontWeight.w700,
+                                  ),
                             ),
-                          );
-                        },
+                            const SizedBox(height: 4),
+                            Text(
+                              'Account, shortcuts, and campus access in one place.',
+                              style: Theme.of(context).textTheme.bodyMedium
+                                  ?.copyWith(color: AppTheme.textSecondary),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      NotificationActionButton(),
+                      const SizedBox(width: 8),
+                      IconButton.filledTonal(
+                        onPressed: () => _openSettings(context),
                         icon: const Icon(Icons.tune_rounded),
                         style: IconButton.styleFrom(
-                          backgroundColor: AppTheme.botBubble,
+                          backgroundColor: Colors.white,
                           foregroundColor: AppTheme.primaryDark,
                         ),
                       ),
@@ -96,166 +140,187 @@ class ProfileScreen extends StatelessWidget {
                   ),
                   const SizedBox(height: 16),
                   Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: AppTheme.navyCardDecoration,
+                    padding: const EdgeInsets.all(18),
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: <Color>[_heroBlue, _heroBlueSoft],
+                      ),
+                      borderRadius: BorderRadius.circular(30),
+                      border: Border.all(
+                        color: AppTheme.primaryDark.withValues(alpha: 0.08),
+                      ),
+                      boxShadow: const <BoxShadow>[
+                        BoxShadow(
+                          color: Color(0x120A1F44),
+                          blurRadius: 18,
+                          offset: Offset(0, 10),
+                        ),
+                      ],
+                    ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: <Widget>[
-                        LayoutBuilder(
-                          builder:
-                              (
-                                BuildContext context,
-                                BoxConstraints constraints,
-                              ) {
-                                final bool compact = constraints.maxWidth < 360;
-                                final Widget avatar = CircleAvatar(
-                                  radius: 34,
-                                  backgroundColor: Colors.white.withValues(
-                                    alpha: 0.18,
-                                  ),
-                                  backgroundImage:
-                                      profile?.photoUrl.isNotEmpty == true
-                                      ? NetworkImage(profile!.photoUrl)
-                                      : null,
-                                  child: profile?.photoUrl.isEmpty != false
-                                      ? Text(
-                                          name.substring(0, 1).toUpperCase(),
-                                          style: const TextStyle(
-                                            color: Colors.white,
-                                            fontSize: 24,
-                                            fontWeight: FontWeight.w700,
-                                          ),
-                                        )
-                                      : null,
-                                );
-                                final Widget identity = Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: <Widget>[
-                                    Text(
-                                      name,
-                                      style: Theme.of(context)
-                                          .textTheme
-                                          .headlineSmall
-                                          ?.copyWith(
-                                            color: Colors.white,
-                                            fontWeight: FontWeight.w600,
-                                          ),
-                                    ),
-                                    const SizedBox(height: 6),
-                                    Text(
-                                      email,
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: Theme.of(context)
-                                          .textTheme
-                                          .bodyLarge
-                                          ?.copyWith(
-                                            color: Colors.white.withValues(
-                                              alpha: 0.78,
-                                            ),
-                                          ),
-                                    ),
-                                  ],
-                                );
-
-                                if (compact) {
-                                  return Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: <Widget>[
-                                      avatar,
-                                      const SizedBox(height: 12),
-                                      identity,
-                                    ],
-                                  );
-                                }
-
-                                return Row(
-                                  children: <Widget>[
-                                    avatar,
-                                    const SizedBox(width: 16),
-                                    Expanded(child: identity),
-                                  ],
-                                );
-                              },
-                        ),
-                        const SizedBox(height: 16),
-                        Wrap(
-                          spacing: 10,
-                          runSpacing: 10,
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: <Widget>[
-                            const _ProfileTagLogo(),
-                            _ProfileTag(label: 'ID: $studentId'),
-                            _ProfileTag(label: department),
-                            _ProfileTag(label: 'Batch $batch'),
-                            _ProfileTag(label: _roleLabel(role)),
+                            CircleAvatar(
+                              radius: 32,
+                              backgroundColor: AppTheme.primaryDark,
+                              backgroundImage:
+                                  profile?.photoUrl.isNotEmpty == true
+                                  ? NetworkImage(profile!.photoUrl)
+                                  : null,
+                              child: profile?.photoUrl.isEmpty != false
+                                  ? Text(
+                                      (name.isNotEmpty ? name : 'E')
+                                          .substring(0, 1)
+                                          .toUpperCase(),
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 22,
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    )
+                                  : null,
+                            ),
+                            const SizedBox(width: 14),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: <Widget>[
+                                  Text(
+                                    name,
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .headlineSmall
+                                        ?.copyWith(
+                                          color: AppTheme.primaryDark,
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    email,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: Theme.of(context).textTheme.bodyLarge
+                                        ?.copyWith(
+                                          color: AppTheme.textSecondary,
+                                        ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            _RolePill(label: _roleLabel(role)),
                           ],
                         ),
                         const SizedBox(height: 16),
-                        LayoutBuilder(
-                          builder:
-                              (
-                                BuildContext context,
-                                BoxConstraints constraints,
-                              ) {
-                                final bool compact = constraints.maxWidth < 390;
-                                final Widget settingsButton =
-                                    OutlinedButton.icon(
-                                      onPressed: () {
-                                        Navigator.of(context).push(
-                                          MaterialPageRoute<SettingsScreen>(
-                                            builder: (_) => SettingsScreen(
-                                              onSignedOut: onSignedOut,
-                                            ),
-                                          ),
-                                        );
-                                      },
-                                      style: OutlinedButton.styleFrom(
-                                        foregroundColor: Colors.white,
-                                        side: BorderSide(
-                                          color: Colors.white.withValues(
-                                            alpha: 0.22,
-                                          ),
-                                        ),
-                                      ),
-                                      icon: const Icon(Icons.settings_outlined),
-                                      label: const Text('Settings'),
-                                    );
-                                final Widget signOutButton =
-                                    ElevatedButton.icon(
-                                      onPressed: () => _handleSignOut(context),
-                                      style: ElevatedButton.styleFrom(
-                                        backgroundColor: Colors.white,
-                                        foregroundColor: AppTheme.primaryDark,
-                                      ),
-                                      icon: const Icon(Icons.logout_rounded),
-                                      label: const Text('Sign Out Safely'),
-                                    );
-
-                                if (compact) {
-                                  return Column(
-                                    children: <Widget>[
-                                      SizedBox(
-                                        width: double.infinity,
-                                        child: settingsButton,
-                                      ),
-                                      const SizedBox(height: 12),
-                                      SizedBox(
-                                        width: double.infinity,
-                                        child: signOutButton,
-                                      ),
-                                    ],
-                                  );
-                                }
-
-                                return Row(
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: <Widget>[
+                            _MetaChip(
+                              icon: Icons.badge_outlined,
+                              label: studentId,
+                            ),
+                            _MetaChip(
+                              icon: Icons.school_outlined,
+                              label: department,
+                            ),
+                            _MetaChip(
+                              icon: Icons.calendar_month_outlined,
+                              label: batch == 'Unknown'
+                                  ? 'Batch -'
+                                  : 'Batch $batch',
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 16),
+                        Container(
+                          padding: const EdgeInsets.all(14),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.62),
+                            borderRadius: BorderRadius.circular(22),
+                          ),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: <Widget>[
+                              Container(
+                                height: 44,
+                                width: 44,
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  borderRadius: BorderRadius.circular(16),
+                                ),
+                                child: Icon(
+                                  _accessIcon(role),
+                                  color: AppTheme.primaryDark,
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
                                   children: <Widget>[
-                                    Expanded(child: settingsButton),
-                                    const SizedBox(width: 12),
-                                    Expanded(child: signOutButton),
+                                    Text(
+                                      _accessTitle(role),
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .titleMedium
+                                          ?.copyWith(
+                                            color: AppTheme.primaryDark,
+                                            fontWeight: FontWeight.w700,
+                                          ),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      _accessSubtitle(role),
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .bodyMedium
+                                          ?.copyWith(
+                                            color: AppTheme.textSecondary,
+                                          ),
+                                    ),
                                   ],
-                                );
-                              },
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        Row(
+                          children: <Widget>[
+                            Expanded(
+                              child: OutlinedButton.icon(
+                                onPressed: () => _openSettings(context),
+                                icon: const Icon(Icons.settings_outlined),
+                                label: const Text('Settings'),
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: AppTheme.primaryDark,
+                                  backgroundColor: Colors.white,
+                                  side: BorderSide(
+                                    color: AppTheme.primaryDark.withValues(
+                                      alpha: 0.14,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: ElevatedButton.icon(
+                                onPressed: () => _handleSignOut(context),
+                                icon: const Icon(Icons.logout_rounded),
+                                label: const Text('Sign Out'),
+                              ),
+                            ),
+                          ],
                         ),
                       ],
                     ),
@@ -267,157 +332,64 @@ class ProfileScreen extends StatelessWidget {
                     department: department,
                     joinedAt: joinedAt,
                   ),
-                  const SizedBox(height: 16),
-                  _AccessSummaryCard(
-                    title: _accessTitle(role),
-                    subtitle: _accessSubtitle(role),
-                    icon: _accessIcon(role),
+                  const SizedBox(height: 18),
+                  _SectionBlock(
+                    title: 'Campus',
+                    subtitle:
+                        'The parts of EWU Assistant you can open right now.',
+                    children: campusActions
+                        .map(
+                          (_ProfileActionData action) => Padding(
+                            padding: const EdgeInsets.only(bottom: 10),
+                            child: _ProfileActionCard(
+                              data: action,
+                              onTap: () =>
+                                  _openDestination(context, action.destination),
+                            ),
+                          ),
+                        )
+                        .toList(),
                   ),
-                  const SizedBox(height: 16),
-                  Text(
-                    'Quick Access',
-                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                      fontWeight: FontWeight.w600,
+                  const SizedBox(height: 14),
+                  _SectionBlock(
+                    title: 'Smart Tools',
+                    subtitle:
+                        'Practical academic tools already available in the app.',
+                    children: toolActions
+                        .map(
+                          (_ProfileActionData action) => Padding(
+                            padding: const EdgeInsets.only(bottom: 10),
+                            child: _ProfileActionCard(
+                              data: action,
+                              onTap: () =>
+                                  _openDestination(context, action.destination),
+                            ),
+                          ),
+                        )
+                        .toList(),
+                  ),
+                  if (adminActions.isNotEmpty) ...<Widget>[
+                    const SizedBox(height: 14),
+                    _SectionBlock(
+                      title: 'Admin',
+                      subtitle:
+                          'Moderation and admin controls available for your role.',
+                      children: adminActions
+                          .map(
+                            (_ProfileActionData action) => Padding(
+                              padding: const EdgeInsets.only(bottom: 10),
+                              child: _ProfileActionCard(
+                                data: action,
+                                onTap: () => _openDestination(
+                                  context,
+                                  action.destination,
+                                ),
+                              ),
+                            ),
+                          )
+                          .toList(),
                     ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    'Each shortcut opens a live screen or a safe starter destination inside EWU Assistant.',
-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: AppTheme.textSecondary,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  if (canAccessAdminPanel)
-                    _QuickAccessCard(
-                      icon: Icons.admin_panel_settings_outlined,
-                      title: 'Admin Panel',
-                      badgeLabel: profile?.isSuperAdmin == true
-                          ? 'Super Admin'
-                          : 'Admin',
-                      subtitle: profile?.isSuperAdmin == true
-                          ? 'Manage admins, roles, and campus moderation tools'
-                          : 'Open your moderation tools and campus admin actions',
-                      onTap: () async {
-                        await _openQuickDestination(
-                          context,
-                          title: 'Admin Panel',
-                          description:
-                              'Your admin workspace is being prepared. Please reopen the panel in a moment.',
-                          builder: (_) =>
-                              AdminPanelScreen(currentProfile: profile),
-                        );
-                        if (!context.mounted) {
-                          return;
-                        }
-                        await provider.refreshProfile();
-                      },
-                    ),
-                  if (canAccessAdminPanel) const SizedBox(height: 12),
-                  _QuickAccessCard(
-                    icon: Icons.calendar_month_outlined,
-                    title: 'My Routine',
-                    badgeLabel: 'Live',
-                    subtitle: 'Open your routine lane and daily class view',
-                    onTap: () {
-                      _openQuickDestination(
-                        context,
-                        title: 'My Routine',
-                        description:
-                            'Your routine lane will appear here once the routine view is ready on this device.',
-                        builder: (_) => const CampusFeedScreen(initialTab: 4),
-                      );
-                    },
-                  ),
-                  const SizedBox(height: 12),
-                  _QuickAccessCard(
-                    icon: Icons.auto_awesome_outlined,
-                    title: 'Smart Routine Generator',
-                    badgeLabel: 'Smart',
-                    subtitle:
-                        'Draft a day-wise class plan and save it into your routine lane',
-                    onTap: () {
-                      _openQuickDestination(
-                        context,
-                        title: 'Smart Routine Generator',
-                        description:
-                            'The routine generator starter tool is opening so you can draft classes and save them into your routine.',
-                        builder: (_) => const SmartToolsScreen(
-                          initialTool: SmartToolType.routineGenerator,
-                        ),
-                      );
-                    },
-                  ),
-                  const SizedBox(height: 12),
-                  _QuickAccessCard(
-                    icon: Icons.functions_outlined,
-                    title: 'CGPA Predictor',
-                    badgeLabel: 'Live',
-                    subtitle:
-                        'Estimate semester outcomes with a working CGPA calculator',
-                    onTap: () {
-                      _openQuickDestination(
-                        context,
-                        title: 'CGPA Predictor',
-                        description:
-                            'The CGPA predictor is opening so you can model credits and expected grades.',
-                        builder: (_) => const SmartToolsScreen(
-                          initialTool: SmartToolType.cgpaPredictor,
-                        ),
-                      );
-                    },
-                  ),
-                  const SizedBox(height: 12),
-                  _QuickAccessCard(
-                    icon: Icons.dashboard_customize_outlined,
-                    title: 'Student Smart Tools',
-                    badgeLabel: '5 tools',
-                    subtitle:
-                        'Open course planner, exam countdown, faculty finder, and more',
-                    onTap: () {
-                      _openQuickDestination(
-                        context,
-                        title: 'Student Smart Tools',
-                        description:
-                            'Your academic smart tools hub is opening with planner, countdown, routine, and faculty tools.',
-                        builder: (_) => const SmartToolsScreen(),
-                      );
-                    },
-                  ),
-                  const SizedBox(height: 12),
-                  _QuickAccessCard(
-                    icon: Icons.groups_rounded,
-                    title: 'Community Hub',
-                    badgeLabel: 'Campus',
-                    subtitle:
-                        'Jump back into feed, gallery, and student activity',
-                    onTap: () {
-                      _openQuickDestination(
-                        context,
-                        title: 'Community Hub',
-                        description:
-                            'The community workspace is opening so you can browse feed, gallery, notices, and routine tabs.',
-                        builder: (_) => const CampusFeedScreen(),
-                      );
-                    },
-                  ),
-                  const SizedBox(height: 12),
-                  _QuickAccessCard(
-                    icon: Icons.notifications_outlined,
-                    title: 'Notices',
-                    badgeLabel: 'Official',
-                    subtitle: 'Open the notices lane for official updates',
-                    onTap: () {
-                      _openQuickDestination(
-                        context,
-                        title: 'Notices',
-                        description:
-                            'Official notices will appear here once the notices lane finishes loading.',
-                        builder: (_) => const CampusFeedScreen(initialTab: 2),
-                      );
-                    },
-                  ),
-                  const SizedBox(height: 12),
+                  ],
                 ],
               ),
             ),
@@ -436,11 +408,10 @@ class ProfileScreen extends StatelessWidget {
     return LayoutBuilder(
       builder: (BuildContext context, BoxConstraints constraints) {
         const double spacing = 12;
-        final double itemWidth = constraints.maxWidth >= 720
-            ? (constraints.maxWidth - (spacing * 2)) / 3
-            : constraints.maxWidth >= 420
-            ? (constraints.maxWidth - spacing) / 2
-            : constraints.maxWidth;
+        final bool singleColumn = constraints.maxWidth < 400;
+        final double itemWidth = singleColumn
+            ? constraints.maxWidth
+            : (constraints.maxWidth - (spacing * 2)) / 3;
 
         return Wrap(
           spacing: spacing,
@@ -476,12 +447,26 @@ class ProfileScreen extends StatelessWidget {
     );
   }
 
+  void _openSettings(BuildContext context) {
+    Navigator.of(context).push(
+      MaterialPageRoute<SettingsScreen>(
+        builder: (_) => SettingsScreen(onSignedOut: onSignedOut),
+      ),
+    );
+  }
+
+  void _openDestination(BuildContext context, Widget destination) {
+    Navigator.of(
+      context,
+    ).push(MaterialPageRoute<void>(builder: (_) => destination));
+  }
+
   Future<void> _handleSignOut(BuildContext context) async {
     final bool confirmed = await showAppConfirmationDialog(
       context,
       title: 'Sign Out?',
       message:
-          'You will return to the login screen and your current campus session will end on this device.',
+          'You will return to the login screen and end your current session on this device.',
       confirmLabel: 'Sign Out',
       destructive: true,
     );
@@ -529,11 +514,11 @@ class ProfileScreen extends StatelessWidget {
   static String _accessSubtitle(String role) {
     switch (role) {
       case StudentProfile.superAdminRole:
-        return 'You can manage admins, moderate every campus lane, and oversee notices and community activity.';
+        return 'Manage admins, notices, and content moderation across the app.';
       case StudentProfile.adminRole:
-        return 'You can moderate campus content across feed, gallery, notices, and community items.';
+        return 'Moderate posts, notices, and app content where your role allows.';
       default:
-        return 'You can use the full student experience across messages, community, services, smart tools, and voice support.';
+        return 'Use messages, community, smart tools, voice assistance, and notes.';
     }
   }
 
@@ -549,8 +534,24 @@ class ProfileScreen extends StatelessWidget {
   }
 }
 
-class _HeaderRoleChip extends StatelessWidget {
-  const _HeaderRoleChip({required this.label});
+class _ProfileActionData {
+  const _ProfileActionData({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.destination,
+    this.badge,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final Widget destination;
+  final String? badge;
+}
+
+class _RolePill extends StatelessWidget {
+  const _RolePill({required this.label});
 
   final String label;
 
@@ -559,8 +560,9 @@ class _HeaderRoleChip extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
-        color: AppTheme.botBubble,
+        color: Colors.white.withValues(alpha: 0.9),
         borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: AppTheme.primaryDark.withValues(alpha: 0.08)),
       ),
       child: Text(
         label,
@@ -573,9 +575,10 @@ class _HeaderRoleChip extends StatelessWidget {
   }
 }
 
-class _ProfileTag extends StatelessWidget {
-  const _ProfileTag({required this.label});
+class _MetaChip extends StatelessWidget {
+  const _MetaChip({required this.icon, required this.label});
 
+  final IconData icon;
   final String label;
 
   @override
@@ -583,32 +586,66 @@ class _ProfileTag extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.12),
+        color: Colors.white.withValues(alpha: 0.82),
         borderRadius: BorderRadius.circular(999),
       ),
-      child: Text(
-        label,
-        style: Theme.of(context).textTheme.labelLarge?.copyWith(
-          color: Colors.white,
-          fontWeight: FontWeight.w700,
-        ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          Icon(icon, size: 15, color: AppTheme.primaryDark),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: Theme.of(context).textTheme.labelLarge?.copyWith(
+              color: AppTheme.primaryDark,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
       ),
     );
   }
 }
 
-class _ProfileTagLogo extends StatelessWidget {
-  const _ProfileTagLogo();
+class _SectionBlock extends StatelessWidget {
+  const _SectionBlock({
+    required this.title,
+    required this.subtitle,
+    required this.children,
+  });
+
+  final String title;
+  final String subtitle;
+  final List<Widget> children;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(999),
+      padding: const EdgeInsets.all(16),
+      decoration: AppTheme.premiumCard.copyWith(
+        color: Colors.white.withValues(alpha: 0.94),
       ),
-      child: const AppLogoMark(size: 24, dark: true, framed: false),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Text(
+            title,
+            style: Theme.of(context).textTheme.titleLarge?.copyWith(
+              color: AppTheme.primaryDark,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            subtitle,
+            style: Theme.of(
+              context,
+            ).textTheme.bodyMedium?.copyWith(color: AppTheme.textSecondary),
+          ),
+          const SizedBox(height: 12),
+          ...children,
+        ],
+      ),
     );
   }
 }
@@ -628,11 +665,21 @@ class _InfoCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.all(16),
-      decoration: AppTheme.premiumCard,
+      decoration: AppTheme.premiumCard.copyWith(
+        color: Colors.white.withValues(alpha: 0.94),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          Icon(icon, color: AppTheme.primaryDark),
+          Container(
+            height: 42,
+            width: 42,
+            decoration: BoxDecoration(
+              color: const Color(0xFFEAF2FF),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Icon(icon, color: AppTheme.primaryDark),
+          ),
           const SizedBox(height: 12),
           Text(
             label,
@@ -645,9 +692,10 @@ class _InfoCard extends StatelessWidget {
             value,
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
-            style: Theme.of(
-              context,
-            ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600),
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+              color: AppTheme.primaryDark,
+              fontWeight: FontWeight.w700,
+            ),
           ),
         ],
       ),
@@ -655,39 +703,36 @@ class _InfoCard extends StatelessWidget {
   }
 }
 
-class _QuickAccessCard extends StatelessWidget {
-  const _QuickAccessCard({
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-    required this.onTap,
-    this.badgeLabel,
-  });
+class _ProfileActionCard extends StatelessWidget {
+  const _ProfileActionCard({required this.data, required this.onTap});
 
-  final IconData icon;
-  final String title;
-  final String subtitle;
+  final _ProfileActionData data;
   final VoidCallback onTap;
-  final String? badgeLabel;
 
   @override
   Widget build(BuildContext context) {
     return InkWell(
-      borderRadius: BorderRadius.circular(28),
+      borderRadius: BorderRadius.circular(22),
       onTap: onTap,
       child: Container(
         padding: const EdgeInsets.all(16),
-        decoration: AppTheme.premiumCard,
+        decoration: BoxDecoration(
+          color: const Color(0xFFF8FBFF),
+          borderRadius: BorderRadius.circular(22),
+          border: Border.all(
+            color: AppTheme.primaryDark.withValues(alpha: 0.06),
+          ),
+        ),
         child: Row(
           children: <Widget>[
             Container(
-              height: 52,
-              width: 52,
+              height: 48,
+              width: 48,
               decoration: BoxDecoration(
-                color: AppTheme.botBubble,
-                borderRadius: BorderRadius.circular(18),
+                color: const Color(0xFFEAF2FF),
+                borderRadius: BorderRadius.circular(16),
               ),
-              child: Icon(icon, color: AppTheme.primaryDark),
+              child: Icon(data.icon, color: AppTheme.primaryDark),
             ),
             const SizedBox(width: 14),
             Expanded(
@@ -698,20 +743,43 @@ class _QuickAccessCard extends StatelessWidget {
                     children: <Widget>[
                       Expanded(
                         child: Text(
-                          title,
+                          data.title,
                           style: Theme.of(context).textTheme.titleMedium
-                              ?.copyWith(fontWeight: FontWeight.w600),
+                              ?.copyWith(
+                                color: AppTheme.primaryDark,
+                                fontWeight: FontWeight.w700,
+                              ),
                         ),
                       ),
-                      if (badgeLabel != null) ...<Widget>[
-                        const SizedBox(width: 10),
-                        _QuickAccessBadge(label: badgeLabel!),
-                      ],
+                      if (data.badge != null)
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 6,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(999),
+                            border: Border.all(
+                              color: AppTheme.primaryDark.withValues(
+                                alpha: 0.08,
+                              ),
+                            ),
+                          ),
+                          child: Text(
+                            data.badge!,
+                            style: Theme.of(context).textTheme.labelMedium
+                                ?.copyWith(
+                                  color: AppTheme.primaryDark,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                          ),
+                        ),
                     ],
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    subtitle,
+                    data.subtitle,
                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                       color: AppTheme.textSecondary,
                     ),
@@ -719,155 +787,12 @@ class _QuickAccessCard extends StatelessWidget {
                 ],
               ),
             ),
+            const SizedBox(width: 8),
             const Icon(
               Icons.chevron_right_rounded,
               color: AppTheme.textSecondary,
             ),
           ],
-        ),
-      ),
-    );
-  }
-}
-
-class _QuickAccessBadge extends StatelessWidget {
-  const _QuickAccessBadge({required this.label});
-
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: AppTheme.botBubble,
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Text(
-        label,
-        style: Theme.of(context).textTheme.labelMedium?.copyWith(
-          color: AppTheme.primaryDark,
-          fontWeight: FontWeight.w700,
-        ),
-      ),
-    );
-  }
-}
-
-class _AccessSummaryCard extends StatelessWidget {
-  const _AccessSummaryCard({
-    required this.title,
-    required this.subtitle,
-    required this.icon,
-  });
-
-  final String title;
-  final String subtitle;
-  final IconData icon;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: AppTheme.premiumCard,
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          Container(
-            height: 48,
-            width: 48,
-            decoration: BoxDecoration(
-              color: AppTheme.botBubble,
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: Icon(icon, color: AppTheme.primaryDark),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: <Widget>[
-                Text(
-                  title,
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  subtitle,
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: AppTheme.textSecondary,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _ProfileFeatureStarterScreen extends StatelessWidget {
-  const _ProfileFeatureStarterScreen({
-    required this.title,
-    required this.description,
-  });
-
-  final String title;
-  final String description;
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppTheme.pageTint,
-      appBar: AppBar(title: Text(title)),
-      body: Container(
-        decoration: const BoxDecoration(gradient: AppTheme.backgroundGradient),
-        child: Center(
-          child: Padding(
-            padding: const EdgeInsets.all(20),
-            child: Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(24),
-              decoration: AppTheme.premiumCard,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: <Widget>[
-                  Container(
-                    height: 68,
-                    width: 68,
-                    decoration: BoxDecoration(
-                      color: AppTheme.botBubble,
-                      borderRadius: BorderRadius.circular(22),
-                    ),
-                    child: const Icon(
-                      Icons.rocket_launch_outlined,
-                      color: AppTheme.primaryDark,
-                      size: 30,
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    title,
-                    textAlign: TextAlign.center,
-                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  Text(
-                    description,
-                    textAlign: TextAlign.center,
-                    style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                      color: AppTheme.textSecondary,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
         ),
       ),
     );

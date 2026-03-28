@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../theme/app_theme.dart';
+import '../widgets/app_branding.dart';
 
 class OnboardingScreen extends StatefulWidget {
   const OnboardingScreen({super.key, required this.onFinished});
@@ -22,25 +23,25 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
       icon: Icons.mic_rounded,
       title: 'Ask With Your Voice',
       description:
-          'Talk naturally and get quick answers about admissions, tuition, campus life, and more.',
+          'Talk naturally and get quick answers about admissions, tuition, routine, faculty, and campus life.',
     ),
     _OnboardingItem(
       icon: Icons.chat_bubble_rounded,
       title: 'Chat Anytime',
       description:
-          'Switch to text chat when you want a quieter, scrollable conversation with the assistant.',
+          'Switch to text chat whenever you want a quieter, scrollable conversation with EWU Assistant.',
     ),
     _OnboardingItem(
       icon: Icons.groups_rounded,
       title: 'Join The Campus Feed',
       description:
-          'Share posts, ask for help, and reply to classmates through the campus social feed.',
+          'Share posts, react, comment, and stay connected with the EWU student community.',
     ),
     _OnboardingItem(
-      icon: Icons.photo_library_rounded,
-      title: 'Explore The Gallery',
+      icon: Icons.auto_awesome_rounded,
+      title: 'Use Notes & Smart Tools',
       description:
-          'Upload campus moments, browse student snapshots, and keep up with university life.',
+          'Save notes, upload study materials, and use tools like CGPA Predictor, Routine Generator, Faculty Finder, and Exam Countdown.',
     ),
   ];
 
@@ -93,10 +94,40 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: <Widget>[
                           Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 14,
+                              vertical: 10,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.88),
+                              borderRadius: BorderRadius.circular(999),
+                              border: Border.all(
+                                color: AppTheme.primaryDark.withValues(
+                                  alpha: 0.08,
+                                ),
+                              ),
+                            ),
+                            child: const Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: <Widget>[
+                                AppLogoMark(size: 20),
+                                SizedBox(width: 10),
+                                Text(
+                                  'EWU Assistant',
+                                  style: TextStyle(
+                                    color: AppTheme.primaryDark,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 22),
+                          Container(
                             height: 124,
                             width: 124,
                             decoration: BoxDecoration(
-                              color: AppTheme.primaryDark,
+                              gradient: AppTheme.navyGradient,
                               borderRadius: BorderRadius.circular(34),
                               boxShadow: const <BoxShadow>[
                                 BoxShadow(

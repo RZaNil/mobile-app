@@ -36,6 +36,10 @@ class ServicesHubService {
   }
 
   Future<void> createNote(NoteItem note) async {
+    await saveNote(note);
+  }
+
+  Future<void> saveNote(NoteItem note) async {
     try {
       final CollectionReference<Map<String, dynamic>> collection = _firestore
           .collection(notesCollection);
@@ -47,7 +51,7 @@ class ServicesHubService {
       throw Exception(
         _mapFirestoreError(
           error,
-          fallback: 'Unable to publish the note right now.',
+          fallback: 'Unable to save the note right now.',
         ),
       );
     }

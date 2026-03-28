@@ -13,6 +13,45 @@ class CloudinaryService {
   bool get isConfigured => cloudName.isNotEmpty && uploadPreset.isNotEmpty;
 
   Future<String> uploadImage(File file) async {
+    return _uploadFile(
+      file,
+      resourceType: 'image',
+      fallbackError:
+          'Image upload could not be completed right now. Please try again.',
+    );
+  }
+
+  Future<String> uploadPdf(File file, {String? fileName}) async {
+    return _uploadFile(
+      file,
+      resourceType: 'raw',
+      fallbackError:
+          'PDF upload could not be completed right now. Please try again.',
+      extraFields: <String, String>{
+        if (fileName != null && fileName.trim().isNotEmpty)
+          'filename_override': fileName.trim(),
+      },
+    );
+  }
+
+  String buildDownloadUrl(String url) {
+    if (url.trim().isEmpty) {
+      return url;
+    }
+
+    if (!url.contains('/upload/')) {
+      return url;
+    }
+
+    return url.replaceFirst('/upload/', '/upload/fl_attachment/');
+  }
+
+  Future<String> _uploadFile(
+    File file, {
+    required String resourceType,
+    required String fallbackError,
+    Map<String, String> extraFields = const <String, String>{},
+  }) async {
     if (!isConfigured) {
       throw Exception(
         'Cloudinary is not configured yet. Add your cloud name and upload preset in cloudinary_service.dart.',
@@ -20,15 +59,18 @@ class CloudinaryService {
     }
     if (!await file.exists()) {
       throw Exception(
-        'The selected image could not be found. Please choose the image again.',
+        'The selected file could not be found. Please choose it again.',
       );
     }
 
     final Uri uri = Uri.parse(
-      'https://api.cloudinary.com/v1_1/$cloudName/image/upload',
+      'https://api.cloudinary.com/v1_1/$cloudName/$resourceType/upload',
     );
     final http.MultipartRequest request = http.MultipartRequest('POST', uri)
-      ..fields['upload_preset'] = uploadPreset
+      ..fields.addAll(<String, String>{
+        'upload_preset': uploadPreset,
+        ...extraFields,
+      })
       ..files.add(await http.MultipartFile.fromPath('file', file.path));
 
     final http.Response response;
@@ -46,9 +88,7 @@ class CloudinaryService {
         'No internet connection was detected. Please check your connection and try again.',
       );
     } catch (_) {
-      throw Exception(
-        'Image upload could not be completed right now. Please try again.',
-      );
+      throw Exception(fallbackError);
     }
 
     if (response.statusCode < 200 || response.statusCode >= 300) {
@@ -73,7 +113,7 @@ class CloudinaryService {
         jsonDecode(response.body) as Map<String, dynamic>;
     final String? secureUrl = body['secure_url']?.toString();
     if (secureUrl == null || secureUrl.isEmpty) {
-      throw Exception('Cloudinary did not return a usable image URL.');
+      throw Exception('Cloudinary did not return a usable file URL.');
     }
     return secureUrl;
   }
